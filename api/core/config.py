@@ -9,13 +9,13 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # 数据库相关配置
-    sqlalchemy_database_uri: str = ""
+    sqlalchemy_database_uri: str = "postgresql+asyncpg://admin:admin123@localhost:5433/mini_manus"
 
     # Redis 相关配置
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_db: int = 0
-    redis_password: str | None = None
+    redis_password: str | None = ""
 
     # 对象存储相关配置
 
