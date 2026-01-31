@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.infrastructure.logging import setup_logging
+from app.infrastructure.storage.redis import get_redis
 from app.interfaces.endpoints.routes import router
 from app.interfaces.errors.exception_handlers import register_exeception_handlers
 from core.config import get_settings
@@ -30,11 +31,16 @@ async def liftspan(app: FastAPI):
     """创建 FastAPI 应用程序生命周期上下文管理器"""
     logger.info("MiniManus 正在初始化...")
 
+    # 初始化 redis 缓存客户端
+    redis = get_redis()
+    await redis.init()
+
     try:
         # lifespan 节点/分界
         yield
     finally:
         logger.info("MiniManus 开始关闭...")
+        await redis.shutdown()
         logger.info("MiniManus 关闭完成...")
 
 # 启动 fastapi
