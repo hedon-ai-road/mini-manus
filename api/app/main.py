@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from app.infrastructure.logging import setup_logging
 from app.infrastructure.storage.redis import get_redis
 from app.infrastructure.storage.posgres import get_postgres
+from app.infrastructure.storage.oss import get_oss
 from app.interfaces.endpoints.routes import router
 from app.interfaces.errors.exception_handlers import register_exeception_handlers
 from core.config import get_settings
@@ -33,8 +34,9 @@ async def liftspan(app: FastAPI):
     logger.info("MiniManus 正在初始化...")
 
     # 初始化 redis 缓存客户端
-    redis = get_redis()
-    await redis.init()
+    await get_redis().init()
+    await get_postgres().init()
+    await get_oss().init()
 
     # 初始化 postgres 客户端
     postgres = get_postgres()
@@ -45,8 +47,9 @@ async def liftspan(app: FastAPI):
         yield
     finally:
         logger.info("MiniManus 开始关闭...")
-        await redis.shutdown()
-        await postgres.shutdown()
+        await get_redis().shutdown()
+        await get_postgres().shutdown()
+        await get_oss().shutdown()
         logger.info("MiniManus 关闭完成...")
 
 # 启动 fastapi

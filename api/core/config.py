@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     redis_password: str | None = ""
 
     # 对象存储相关配置
+    oss_access_key_id: str = ""
+    oss_access_key_secret: str = ""
+    oss_region_id: str = "cn-beijing"
+    oss_endpoint: str = "oss-cn-beijing.aliyuncs.com"
+    oss_bucket: str = "mini-manus"
 
     # 使用 pydantic v2 的写法来完成环境变量信息的告知
     model_config = SettingsConfigDict(
