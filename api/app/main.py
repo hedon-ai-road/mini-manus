@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from app.infrastructure.logging import setup_logging
 from app.interfaces.endpoints.routes import router
+from app.interfaces.errors.exception_handlers import register_exeception_handlers
 from core.config import get_settings
 
 
@@ -54,5 +55,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 注册错误处理器
+register_exeception_handlers(app=app)
 
 app.include_router(router=router, prefix="/api")
