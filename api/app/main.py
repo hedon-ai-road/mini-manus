@@ -1,8 +1,12 @@
 import logging
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+
 from app.infrastructure.logging import setup_logging
+from app.interfaces.endpoints.routes import router
 from core.config import get_settings
 
-from fastapi import FastAPI
 
 # 1. 加载配置信息
 settings = get_settings()
@@ -12,6 +16,43 @@ setup_logging()
 logger = logging.getLogger(__name__)
 logger.info("测试~")
 
+# 3. 定义 FastAPI 路由 tags 标签
+openapi_tags = [
+    {
+        "name": "状态模块",
+        "description": "包含 **状态检测** 等 API 接口，用于检测系统的运行状态。"
+    }
+]
+
+@asynccontextmanager
+async def liftspan(app: FastAPI):
+    """创建 FastAPI 应用程序生命周期上下文管理器"""
+    logger.info("MiniManus 正在初始化...")
+
+    try:
+        # lifespan 节点/分界
+        yield
+    finally:
+        logger.info("MiniManus 开始关闭...")
+        logger.info("MiniManus 关闭完成...")
+
 # 启动 fastapi
 # 运行方式：uvicorn app.main:app --reload --port 9527
-app = FastAPI()
+app = FastAPI(
+    title="MiniManus 通用智能体",
+    description="MiniManus 是一个通用的 AI Agent 系统，可以完全私有部署，使用 A2A+MCP 连接 Agent/Tool，同时支持在沙箱中运行各种内置工具。",
+    lifespan=liftspan,
+    openapi_tags=openapi_tags,
+    version="1.0.0",
+)
+
+# 配置 CORS 中间件，解决跨域问题
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(router=router, prefix="/api")
