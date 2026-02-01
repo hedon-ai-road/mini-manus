@@ -40,7 +40,7 @@ class RedisClient:
 
         # 1. 关闭 redis 客户端
         if self._client is not None:
-            await self._client.close()
+            await self._client.aclose()
             self._client = None
             logger.info("redis 客户端成功关闭")
 
