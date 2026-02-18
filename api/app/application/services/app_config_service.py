@@ -1,4 +1,4 @@
-from app.domain.models.app_config import AppConfig, LLMConfig
+from app.domain.models.app_config import AgentConfig, AppConfig, LLMConfig
 from app.domain.repositories.app_config_repository import AppConfigRepository
 
 
@@ -26,3 +26,14 @@ class AppConfigService:
         app_config.llm_config = llm_config
         self.app_config_repository.save(app_config)
         return app_config.llm_config
+
+    def get_agent_config(self) -> AgentConfig:
+        """获取 Agent 配置"""
+        return self._load_app_config().agent_config
+
+    def update_agent_config(self, agent_config: AgentConfig) -> AgentConfig:
+        """根据传递的 agent_config 更新 Agent 配置"""
+        app_config = self._load_app_config()
+        app_config.agent_config = agent_config
+        self.app_config_repository.save(app_config)
+        return app_config.agent_config

@@ -8,10 +8,17 @@ class LLMConfig(BaseModel):
     temperature: float = Field(default=0.7)  # 温度
     max_tokens: int = Field(default=8192, ge=0) # 最大输出 token 数
 
+class AgentConfig(BaseModel):
+    """Agent 通用配置"""
+    max_iterations: int = Field(default=100, gt=0, lt=100) # 最大迭代次数
+    max_retries: int = Field(default=3, gt=1, lt=10) # LLM/工具的最大重试次数
+    max_search_results: int = Field(default=10, gt=1, lt=30) # 最大搜索结果数
+
 
 class AppConfig(BaseModel):
     """应用配置信息，包含 Agent 配置、LLM 提供商、A2A 网络、MCP 服务配置等"""
     llm_config: LLMConfig
+    agent_config: AgentConfig
 
     # Pydantic 配置，允许传递额外的字段初始化
     model_config = ConfigDict(extra="allow")
