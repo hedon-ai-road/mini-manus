@@ -6,7 +6,7 @@ import uuid
 
 from app.domain.external.json_parser import JsonParser
 from app.domain.external.llm import LLM
-from app.domain.models.event import ErrorEvent, Event, ToolEvent, ToolEventStatus
+from app.domain.models.event import ErrorEvent, Event, MessageEvent, ToolEvent, ToolEventStatus
 from app.domain.models.memory import Memory
 from app.domain.models.message import Message
 from app.domain.models.tool_result import ToolResult
@@ -214,3 +214,5 @@ class BaseAgent(ABC):
         else:
             yield ErrorEvent(error=f"Agent 迭代操作最大次数: {self._agent_config.max_iterations}，任务处理失败")
 
+        # 返回处理成功的消息
+        yield MessageEvent(message=message["content"])
