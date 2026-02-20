@@ -1,4 +1,3 @@
-from sqlalchemy import false
 import asyncio
 import uuid
 from typing import Optional
@@ -122,4 +121,4 @@ class RedisStreamMessageQueue(MessageQueue):
             return True
         except Exception as e:
             logger.error(f"删除消息 {message_id} 出错: {str(e)}")
-            return false
+            return False
