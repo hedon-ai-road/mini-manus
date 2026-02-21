@@ -4,7 +4,7 @@ from typing import Optional
 import yaml
 
 from fastapi import logger
-from app.domain.models.app_config import AppConfig, LLMConfig
+from app.domain.models.app_config import AgentConfig, AppConfig, LLMConfig, MCPConfig
 from app.domain.repositories.app_config_repository import AppConfigRepository
 from app.application.errors.exceptions import ServerError
 from filelock import FileLock
@@ -28,7 +28,9 @@ class FileAppConfigRepository(AppConfigRepository):
     def _create_default_app_config_if_not_exists(self):
         if not self._config_path.exists():
             default_app_config = AppConfig(
-                llm_config=LLMConfig()
+                llm_config=LLMConfig(),
+                agent_config=AgentConfig(),
+                mcp_config=MCPConfig()
             )
             self.save(default_app_config)
 
