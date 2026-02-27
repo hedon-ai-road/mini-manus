@@ -24,6 +24,7 @@ from contextlib import AbstractAsyncContextManager, AsyncExitStack
 import logging
 import os
 from typing import Any, Dict, List, Optional
+import httpx
 from mcp import ClientSession, StdioServerParameters, Tool, stdio_client
 from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamable_http_client
@@ -133,7 +134,10 @@ class MCPClientManager:
             raise ValueError(f"连接 streamable-htt-mcp 服务器需要配置 url")
 
         try:
-            cm = streamable_http_client(url=url)
+            cm = streamable_http_client(
+                url=url,
+                http_client=httpx.AsyncClient(headers=server_config.headers)
+            )
             session = await self._new_session(server_name, cm)
             await self._cache_mcp_server_tools(server_name, session)
             
