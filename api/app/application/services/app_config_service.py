@@ -1,7 +1,12 @@
+import logging
+from typing import List
 from app.application.errors.exceptions import NotFoundError
 from app.domain.models.app_config import AgentConfig, AppConfig, LLMConfig, MCPConfig
 from app.domain.repositories.app_config_repository import AppConfigRepository
+from app.domain.services.tools.mcp import MCPClientManager
+from app.interfaces.schemas.app_config import ListMCPServerItem
 
+logger = logging.getLogger(__name__)
 
 class AppConfigService:
     """应用配置服务"""
@@ -38,6 +43,32 @@ class AppConfigService:
         app_config.agent_config = agent_config
         await self.app_config_repository.save(app_config)
         return app_config.agent_config
+
+    async def get_mcp_servers(self) -> List[ListMCPServerItem]:
+        """获取 MCP 服务列表"""
+        app_config = await self._load_app_config()
+
+        mcp_servers = []
+        mcp_client_manager = MCPClientManager(mcp_config=app_config.mcp_config)
+        
+        try:
+            await mcp_client_manager.initilize()
+
+            tools = mcp_client_manager.tools
+            for server_name, server_config in app_config.mcp_config.mcpServers.items():
+                mcp_servers.append(ListMCPServerItem(
+                    server_name=server_name,
+                    enabled=server_config.enabled,
+                    transport=server_config.transport,
+                    tools=[tool.name for tool in tools.get(server_name, [])],
+                ))
+        except Exception as e:
+            logger.error(f"获取 MCP 服务列表失败: {str(e)}")
+        finally:
+            await mcp_client_manager.cleanup()
+
+        return mcp_servers
+
 
     async def update_and_create_mcp_servers(self, mcp_config: MCPConfig) -> MCPConfig:
         """根据传递的数据新增或更新 MCP 配置"""
