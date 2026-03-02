@@ -58,7 +58,7 @@ class RedisStreamTask(Task):
 
     async def invoke(self) -> None:
         """运行当前任务"""
-        if not self.done():
+        if self.done:
             self._execution_task = asyncio.create_task(self._execution_task())
             logger.info(f"任务[{self._id}]开始执行")
 
