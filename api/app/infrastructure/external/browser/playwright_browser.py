@@ -8,7 +8,7 @@ from playwright.async_api import Browser, ElementHandle, Page, Playwright, async
 from app.domain.external.llm import LLM
 from app.domain.external.browser import Browser as BrowserProtocol
 from app.domain.models.tool_result import ToolResult
-from app.infrastructure.external.browser.playwright_browser_fun import GET_INTERACTIVE_ELEMENTS_FUNC, GET_VISIBLE_CONTENT_FUNC
+from app.infrastructure.external.browser.playwright_browser_fun import GET_INTERACTIVE_ELEMENTS_FUNC, GET_VISIBLE_CONTENT_FUNC, INJECT_CONSOLE_LOGS_FUNC
 
 logger = logging.getLogger(__name__)
 
@@ -290,7 +290,9 @@ class PlaywrightBrowser(BrowserProtocol):
                     await element.fill("")
                     await element.type(text)
                 except Exception as e:
-                    return ToolResult(success=False, message=f"输入文本失败: {str(e)}")
+                    # 如果填充失败，则尝试点击后输入文本
+                    await element.click()
+                    await element.type(text)
             except Exception as e:
                 return ToolResult(success=False, message=f"输入文本失败: {str(e)}")
         
@@ -359,6 +361,12 @@ class PlaywrightBrowser(BrowserProtocol):
     
     async def console_exec(self, javascript: str) -> ToolResult:
         await self._ensure_page()
+
+        try:
+            await self.page.evaluate(INJECT_CONSOLE_LOGS_FUNC)
+        except Exception as e:
+            logger.warning(f"注入 window.console.logs 失败: {str(e)}")
+
         result = await self.page.evaluate(javascript)
         return ToolResult(success=True, data={"result": result})
     
