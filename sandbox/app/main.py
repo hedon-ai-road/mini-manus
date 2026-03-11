@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.interfaces.endpoints.routes import router
+from app.interfaces.errors.exception_handler import register_exception_handlers
 
 def setup_logging() -> None:
     """配置项目日志系统，涵盖日志等级、输出格式、输出渠道等"""
@@ -82,5 +83,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 注册错误并处理
+register_exception_handlers(app)
 
 app.include_router(router, prefix="/api")
