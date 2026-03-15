@@ -5,7 +5,7 @@ from app.interfaces.errors.exception import BadRequestException
 from app.interfaces.schemas.base import Response
 from app.interfaces.schemas.shell import ExecCommandRequest, KillProcessRequest, ViewShellRequest, WaitForProcessRequest, WriteToProcessRequest
 from app.models.shell import ShellExecResult, ShellKillResult, ShellViewResult, ShellWaitResult, ShellWriteResult
-from app.interfaces.service_dependecies import get_shell_service
+from app.interfaces.service_dependencies import get_shell_service
 from app.services.shell import ShellService
 
 router = APIRouter(prefix="/shell", tags=["Shell模块"])
