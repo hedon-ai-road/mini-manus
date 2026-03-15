@@ -16,3 +16,13 @@ class WaitForProcessRequest(BaseModel):
     """等待 shell 命令执行请求结构体"""
     session_id: str = Field(...,  description="shell 会话唯一标识符")
     seconds: Optional[int] = Field(default=None, description="等待超时时间(s)")
+
+class WriteToProcessRequest(BaseModel):
+    """写入数据到子进程请求结构体"""
+    session_id: str = Field(...,  description="shell 会话唯一标识符")
+    input_text: str = Field(..., description="需要写入的内容文本")
+    press_enter: bool = Field(default=True, description="是否按下回车键，默认为True")
+
+class KillProcessRequest(BaseModel):
+    """关闭子进程请求结构体"""
+    session_id: str = Field(...,  description="shell 会话唯一标识符")

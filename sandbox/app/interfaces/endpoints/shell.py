@@ -3,8 +3,8 @@ from fastapi import APIRouter, Depends
 
 from app.interfaces.errors.exception import BadRequestException
 from app.interfaces.schemas.base import Response
-from app.interfaces.schemas.shell import ExecCommandRequest, ViewShellRequest, WaitForProcessRequest
-from app.models.shell import ShellExecResult, ShellViewResult, ShellWaitResult
+from app.interfaces.schemas.shell import ExecCommandRequest, KillProcessRequest, ViewShellRequest, WaitForProcessRequest, WriteToProcessRequest
+from app.models.shell import ShellExecResult, ShellKillResult, ShellViewResult, ShellWaitResult, ShellWriteResult
 from app.interfaces.service_dependecies import get_shell_service
 from app.services.shell import ShellService
 
@@ -55,8 +55,45 @@ async def wait_for_process(
     req: WaitForProcessRequest,
     shell_service: ShellService = Depends(get_shell_service),
 ) -> Response[ShellWaitResult]:
+    if not req.session_id or req.session_id == "":
+        raise BadRequestException("session_id 为空")
+
     result = await shell_service.wait_for_process(req.session_id, req.seconds)
     return Response.success(
         msg=f"进程结束，返回状态码(returncode): {result.returncode}",
+        data=result,
+    )
+
+@router.post(
+    path="/write-to-process",
+    response_model=Response[ShellWriteResult],
+)
+async def write_to_process(
+    req: WriteToProcessRequest,
+    shell_service: ShellService = Depends(get_shell_service),
+) -> Response[ShellWriteResult]:
+    if not req.session_id or req.session_id == "":
+        raise BadRequestException("session_id 为空")
+
+    result = await shell_service.write_to_process(req.session_id, req.input_text, req.press_enter)
+    return Response.success(
+        msg="向进程写入数据成功",
+        data=result,
+    )
+
+@router.post(
+    path="/kill-process",
+    response_model=Response[ShellKillResult]
+)
+async def kill_process(
+    req: KillProcessRequest,
+    shell_service: ShellService = Depends(get_shell_service),
+) -> Response[ShellKillResult]:
+    if not req.session_id or req.session_id == "":
+        raise BadRequestException("session_id 为空")
+
+    result = await shell_service.kill_process(req.session_id)
+    return Response.success(
+        msg="进程终止" if result.status == "terminated" else "进程已结束",
         data=result,
     )

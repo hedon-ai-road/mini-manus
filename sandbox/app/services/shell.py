@@ -9,8 +9,9 @@ import getpass
 import socket
 import shutil
 import codecs
+import locale
 
-from app.models.shell import ConsoleRecord, Shell, ShellExecResult, ShellViewResult, ShellWaitResult
+from app.models.shell import ConsoleRecord, Shell, ShellExecResult, ShellKillResult, ShellViewResult, ShellWaitResult, ShellWriteResult
 from app.interfaces.errors.exception import AppException, BadRequestException, NotFoundException
 
 logger = logging.getLogger(__name__)
@@ -171,7 +172,6 @@ class ShellService:
             console_records=console_records,
         )
 
-
     async def exec_command(
         self,
         session_id: str,
@@ -275,3 +275,87 @@ class ShellService:
                 msg=f"命令执行失败: {str(e)}",
                 data={"session_id": session_id, "command": command}
             )
+    
+    async def write_to_process(
+        self,
+        session_id: str,
+        input_text: str,
+        press_enter: bool,
+    ) -> ShellWaitResult:
+        """根据传递的数据向指定子进程写入数据"""
+        logger.debug(f"写入 shell 会话中的子进程: {session_id}，是否按下回车键: {press_enter}")
+        if session_id not in self.active_shells:
+            logger.error(f"shell 会话不存在: {session_id}")
+            raise NotFoundException(f"shell 会话不存在: {session_id}")
+        
+        shell = self.active_shells[session_id]
+        process = shell.process
+
+        try:
+            if process.returncode is not None:
+                logger.error(f"子进程已结束，无法写入输入: {session_id}")
+                raise BadRequestException(f"子进程已结束，无法写入输入: {session_id}")
+
+            if sys.platform == "win32":
+                encoding = locale.getpreferredencoding()
+                line_ending = "\r\n"
+            else:
+                encoding = "utf-8"
+                line_ending = "\n"
+            
+            text_to_send = input_text
+            if press_enter:
+                text_to_send += line_ending
+            
+            input_data = text_to_send.encode(encoding=encoding)
+            log_text = input_text + ("\n" if press_enter else "")
+            shell.output += log_text
+            if shell.console_records:
+                shell.console_records[-1].output += log_text
+
+            # 向子进程写入数据
+            process.stdin.write(input_data)
+            await process.stdin.drain()
+
+            logger.info("成功向子进程写入数据")
+            return ShellWriteResult(status="success")
+        except UnicodeError as e:
+            logger.error(f"编码错误: {str(e)}")
+            raise AppException(f"编码错误: {str(e)}")
+        except Exception as e:
+            logger.error(f"向子进程写入数据出错: {str(e)}")
+            raise AppException(f"向子进程写入数据出错: {str(e)}")
+
+    async def kill_process(self, session_id: str) -> ShellKillResult:
+        """关闭子进程"""
+        logger.debug(f"正在终止 shell 会话中的子进程: {session_id}")
+        if session_id not in self.active_shells:
+            logger.error(f"shell 会话不存在: {session_id}")
+            raise NotFoundException(f"shell 会话不存在: {session_id}")
+        
+        shell = self.active_shells[session_id]
+        process = shell.process
+
+        try:
+            if process.returncode is None:
+                logger.info(f"尝试优雅终止进程: {session_id}")
+                process.terminate()
+
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=3)
+                except asyncio.TimeoutError:
+                    # 优雅关闭失败，则强制关闭
+                    logger.warning(f"尝试强制关闭进程: {session_id}")
+                    process.kill()
+
+                logger.info(f"进程已终止，返回代码为: {process.returncode}")
+                return ShellKillResult(status="terminated", returncode=process.returncode)
+            else:
+                logger.info(f"进程已终止，无需重复终止: {session_id}, 代码: {process.returncode}")
+                return ShellKillResult(
+                    status="already_terminated",
+                    returncode=process.returncode,
+                )
+        except Exception as e:
+            logger.error(f"关闭子进程异常: {str(e)}", exc_info=True)
+            raise AppException(f"关闭子进程异常: {str(e)}")
