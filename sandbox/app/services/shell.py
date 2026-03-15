@@ -1,17 +1,14 @@
 import asyncio
 import os
 import re
-import sys
 from typing import Dict, List, Optional
 import uuid
 import logging
 import getpass
 import socket
-import shutil
 import codecs
-import locale
 
-from app.models.shell import ConsoleRecord, Shell, ShellExecResult, ShellKillResult, ShellViewResult, ShellWaitResult, ShellWriteResult
+from app.models.shell import ConsoleRecord, Shell, ShellExecuteResult, ShellKillResult, ShellReadResult, ShellWaitResult, ShellWriteResult
 from app.interfaces.errors.exception import AppException, BadRequestException, NotFoundException
 
 logger = logging.getLogger(__name__)
@@ -116,7 +113,7 @@ class ShellService:
             ))
         return clean_console_records
 
-    async def wait_for_process(self, session_id: str, seconds: Optional[int] = None) -> ShellWaitResult:
+    async def wait_process(self, session_id: str, seconds: Optional[int] = None) -> ShellWaitResult:
         """等待子进程结束，结果代码"""
         logger.debug(f"正在 shell 会话中等待进程: {session_id}, 超时时间: {seconds}s")
         if session_id not in self.active_shells:
@@ -139,7 +136,7 @@ class ShellService:
             logging.error(f"shell 会话进程等待异常: {str(e)}")
             raise AppException(f"shell 会话进程等待异常: {str(e)}")
 
-    async def view_shell(self, session_id: str, console: bool = False) -> ShellViewResult:
+    async def read_shell_output(self, session_id: str, console: bool = False) -> ShellReadResult:
         """获取 shell 命令会话结果"""
         logger.debug(f"查看 shell 会话内容: {session_id}")
         if session_id not in self.active_shells:
@@ -157,7 +154,7 @@ class ShellService:
         else:
             console_records = []
         
-        return ShellViewResult(
+        return ShellReadResult(
             output=clean_output,
             session_id=session_id,
             console_records=console_records,
@@ -168,7 +165,7 @@ class ShellService:
         session_id: str,
         exec_dir: str,
         command: str,
-    ) -> ShellExecResult:
+    ) -> ShellExecuteResult:
         """执行命令"""
 
         # 1. 记录日志并检查执行目录是否存在
@@ -234,14 +231,14 @@ class ShellService:
             try:
                 # 13. 尝试等待子进程执行（5s）
                 logger.debug(f"正在等待会中的进程完成: {session_id}")
-                wait_result = await self.wait_for_process(session_id, seconds=5)
+                wait_result = await self.wait_process(session_id, seconds=5)
 
                 # 14. 判断返回代码是否非空（已结束）则同步返回结果
                 if wait_result.returncode is not None:
                     logger.debug(f"shell 会话进程已结束，代码: {wait_result.returncode}")
-                    view_result = await self.view_shell(session_id)
+                    view_result = await self.read_shell_output(session_id)
 
-                    return ShellExecResult(
+                    return ShellExecuteResult(
                         session_id=session_id,
                         command=command,
                         status="completed",
@@ -255,7 +252,7 @@ class ShellService:
                 logging.warning(f"等待进程时出现异常: {str(e)}")
                 pass
 
-            return ShellExecResult(
+            return ShellExecuteResult(
                 session_id=session_id,
                 command=command,
                 status="running",
@@ -267,7 +264,7 @@ class ShellService:
                 data={"session_id": session_id, "command": command}
             )
     
-    async def write_to_process(
+    async def write_shell_input(
         self,
         session_id: str,
         input_text: str,
