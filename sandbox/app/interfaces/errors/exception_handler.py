@@ -16,12 +16,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=e.status_code,
             content=Response(
-                content=Response(
-                    code=e.status_code,
-                    msg=e.msg,
-                    data={}
-                ).model_dump(),
-            )
+                code=e.status_code,
+                msg=e.msg,
+                data={}
+            ).model_dump()
         )
 
     @app.exception_handler(HTTPException)
