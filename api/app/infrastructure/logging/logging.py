@@ -29,4 +29,4 @@ def setup_logging():
     # 6. 将控制台日志处理器添加到根日志处理器中
     root_logger.addHandler(console_handler)
 
-    root_logger.info("日志系统初始化完成!")
+    root_logger.info("API系统日志模块初始化完成!")
