@@ -19,7 +19,10 @@ logger = logging.getLogger(__name__)
 class ShellService:
     """shell 命令服务"""
 
-    active_shells: Dict[str, Shell] = {}
+    active_shells: Dict[str, Shell]
+
+    def __init__(self) -> None:
+        self.active_shells = {}
 
     @classmethod
     def _get_display_path(cls, path: str) -> str:
@@ -41,16 +44,7 @@ class ShellService:
     async def _create_process(cls, exec_dir: str, command: str) -> asyncio.subprocess.Process:
         """根据传递的执行目录+命令创建一个 asyncio 管理的子进程"""
         logger.debug(f"在目录 {exec_dir} 下使用命令 {command} 创建一个子进程")
-        shell_exec = None
-        if sys.platform != "win32":
-            if os.path.exists("/bin/bash"):
-                shell_exec = "/bin/bash"
-            elif os.path.exists("/bin/zsh"):
-                shell_exec = "/bin/zsh"
-        elif sys.platform == "win32":
-            shell_exec = shutil.which("powershell")
-            if not shell_exec:
-                shell_exec = shutil.which("cmd")
+        shell_exec = "/bin/bash"
         
         return await asyncio.create_subprocess_shell(
             cmd=command,
@@ -65,10 +59,7 @@ class ShellService:
     async def _start_output_reader(self, session_id: str, process: asyncio.subprocess.Process) -> None:
         """启动协程以连续读取进程输出并将其存储到会话中"""
         logger.debug(f"正在弃用会话输出读取器: {session_id}")
-        if sys.platform == "win32":
-            encoding = "gb18030"
-        else:
-            encoding = "utf-8"
+        encoding = "utf-8"
         decoder = codecs.getincrementaldecoder(encoding)(errors="replace")
         shell = self.active_shells.get(session_id)
 
@@ -209,7 +200,7 @@ class ShellService:
                 )
 
                 # 5. 创建后台任务来运行输出读取器
-                asyncio.create_task(self._start_output_reader(session_id, process))
+                await asyncio.create_task(self._start_output_reader(session_id, process))
             else:
                 # 6. 该会话已存在，则读取数据
                 logger.debug(f"使用现有的 shell 会话: {session_id}")
@@ -238,7 +229,7 @@ class ShellService:
                 shell.console_records.append(ConsoleRecord(ps1=ps1, command=command, output=""))
 
                 # 12. 创建后台任务来运行输出读取器
-                asyncio.create_task(self._start_output_reader(session_id, process))
+                await asyncio.create_task(self._start_output_reader(session_id, process))
         
             try:
                 # 13. 尝试等待子进程执行（5s）
@@ -296,12 +287,8 @@ class ShellService:
                 logger.error(f"子进程已结束，无法写入输入: {session_id}")
                 raise BadRequestException(f"子进程已结束，无法写入输入: {session_id}")
 
-            if sys.platform == "win32":
-                encoding = locale.getpreferredencoding()
-                line_ending = "\r\n"
-            else:
-                encoding = "utf-8"
-                line_ending = "\n"
+            encoding = "utf-8"
+            line_ending = "\n"
             
             text_to_send = input_text
             if press_enter:
