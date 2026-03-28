@@ -178,7 +178,7 @@ class ShellService:
         
         if not os.path.exists(exec_dir):
             logger.error(f"当前目录不存在: {exec_dir}")
-            return BadRequestException(f"当前目录不存在: {exec_dir}")
+            raise BadRequestException(f"当前目录不存在: {exec_dir}")
 
         try:
             # 2. 格式化并生成 ps1 路径
