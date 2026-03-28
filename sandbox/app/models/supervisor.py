@@ -32,4 +32,4 @@ class SupervisorTimeout(BaseModel):
     active: bool = Field(default=None, description="超时销毁是否激活")
     shutdown_time: Optional[str] = Field(default=None, description="销毁时间")
     timeout_minutes: Optional[float] = Field(default=None, description="超时实际，单位分钟")
-    ramaining_seconds: Optional[float] = Field(default=None, description="超时剩余秒数")
+    remaining_seconds: Optional[float] = Field(default=None, description="超时剩余秒数")
