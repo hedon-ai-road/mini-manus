@@ -25,6 +25,17 @@ class Settings(BaseSettings):
     oss_endpoint: str = "oss-cn-beijing.aliyuncs.com"
     oss_bucket: str = "mini-manus"
 
+    # 沙箱配置
+    sandbox_address: str = ""
+    sandbox_image: str = "mini-manus-sandbox"
+    sandbox_name_prefix: str = "mini-manus-sandbox"
+    sandbox_ttl_minutes: int = 60
+    sandbox_network: str = "mini-manus-network"
+    sandbox_chrome_args: str = ""
+    sandbox_https_proxy: str = ""
+    sandbox_http_proxy: str = ""
+    sandbox_no_proxy: str = ""
+
     # 使用 pydantic v2 的写法来完成环境变量信息的告知
     model_config = SettingsConfigDict(
         env_file=".env",
