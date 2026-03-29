@@ -12,6 +12,7 @@ from async_lru import alru_cache
 
 from app.domain.external.browser import Browser
 from app.domain.external.sandbox import Sandbox
+from app.domain.models.tool_result import ToolResult
 from app.infrastructure.external.browser.playwright_browser import PlaywrightBrowser
 from core.config import get_settings
 
@@ -198,3 +199,48 @@ class DockerSandbox(Sandbox):
     async def get_browser(self) -> Browser:
         """获取当前沙箱的浏览器实例"""
         return PlaywrightBrowser(cdp_url=self.cdp_url)
+
+    async def ensure_sandbox(self) -> None:
+        """确保沙箱存在/服务全部都开启了才执行后续步骤"""
+        max_retries = 30 # 最大重试次数
+        retry_interval = 2 # 重试间隔时间(2s)
+        
+        # 循环请求 supervisor 状态并判断服务是否正常
+        for attempt in range(max_retries):
+            try:
+                # 请求 supervisor 状态
+                response: httpx.Response = await self.client.get(f"{self._base_url}/api/supervisor/status")
+                response.raise_for_status()
+                tool_result = ToolResult.from_sandbox(**response.json())
+                if not tool_result.success:
+                    logger.warning(f"supervisor 服务未正常运行: {tool_result.message}")
+                    await asyncio.sleep(retry_interval)
+                    continue
+
+                # 获取 supervisor 进程中所有服务
+                services = tool_result.data or []
+                if not services:
+                    logger.warning("supervisor 进程中未发现任何服务")
+                    await asyncio.sleep(retry_interval)
+                    continue
+
+                # 判断服务是否全部开启
+                all_running = True
+                not_running_services = []
+                for service in services:
+                    service_name = service.get("name", "unknown")
+                    state_name = service.get("statename", "")
+                    if state_name != "RUNNING":
+                        all_running = False
+                        not_running_services.append(f"{service_name}({state_name})")
+
+                if not all_running:
+                    logger.info(f"supervisor 进程中以下服务未正常运行: {', '.join(not_running_services)}")
+                    await asyncio.sleep(retry_interval)
+                    continue
+
+                logger.info("supervisor 进程中所有服务均正常运行")
+                return
+            except Exception as e:
+                logger.error(f"请求 supervisor 状态失败: {str(e)}")
+                await asyncio.sleep(retry_interval)
