@@ -1,3 +1,4 @@
+import uuid
 from enum import Enum
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
@@ -51,6 +52,17 @@ class MCPServerConfig(BaseModel):
         
         return self
 
+class A2AServerConfig(BaseModel):
+    """A2A服务配置"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))  # 唯一标识
+    base_url: str  # 服务基础URL
+    enabled: bool = True  # 服务是否开启
+
+
+class A2AConfig(BaseModel):
+    """A2A配置"""
+    a2a_servers: List[A2AServerConfig] = Field(default_factory=list)
+
 class MCPConfig(BaseModel):
     """MCP 配置"""
     mcpServers: Dict[str, MCPServerConfig] = Field(default_factory=dict) # mcp 服务
@@ -62,6 +74,7 @@ class AppConfig(BaseModel):
     llm_config: LLMConfig
     agent_config: AgentConfig
     mcp_config: MCPConfig
+    a2a_config: A2AConfig
 
     # Pydantic 配置，允许传递额外的字段初始化
     model_config = ConfigDict(extra="allow")

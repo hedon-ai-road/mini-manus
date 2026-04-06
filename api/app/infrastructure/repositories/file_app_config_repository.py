@@ -4,7 +4,7 @@ from typing import Optional
 import yaml
 
 from fastapi import logger
-from app.domain.models.app_config import AgentConfig, AppConfig, LLMConfig, MCPConfig
+from app.domain.models.app_config import A2AConfig, AgentConfig, AppConfig, LLMConfig, MCPConfig
 from app.domain.repositories.app_config_repository import AppConfigRepository
 from app.application.errors.exceptions import ServerError
 from filelock import FileLock
@@ -30,7 +30,8 @@ class FileAppConfigRepository(AppConfigRepository):
             default_app_config = AppConfig(
                 llm_config=LLMConfig(),
                 agent_config=AgentConfig(),
-                mcp_config=MCPConfig()
+                mcp_config=MCPConfig(),
+                a2a_config=A2AConfig()
             )
             self.save(default_app_config)
 
