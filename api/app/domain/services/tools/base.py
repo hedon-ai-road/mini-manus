@@ -2,7 +2,7 @@
 MiniManus 工具设计思路：
 
 1. 所有工具都必须继承一个 BaseTool 基类，拥有统一的 invoke 方法用于调用该类下的对应工具；
-2. 定义一个装饰器，被该装饰器装饰的方法会填充 _tool_name、_tool_description、_tool_schema 属性；
+2. 定义一个装饰器，被该装饰器装饰的方法会填充 tool_name、tool_description、tool_schema 属性；
 3. 工具类可以通过 get_tools 快速获取基于缓存的 schema 参数信息，这样 LLM 就可以便捷调用；
 4. LLM 生成的内容有可能会有幻觉，在调用工具前需要筛选出 LLM 生成参数中符合工具的相关数据。
 """
@@ -20,7 +20,7 @@ def tool(
     required: List[str],
 ) -> Callable:
     """定义 OpenAI 工具装饰器，用于将一个函数/方法添加上对应的工具声明"""
-    
+
     def decorator(func):
         """装饰器函数，用于将 name/description/parameters/required 转换成对应的属性"""
         # 1. 创建工具声明数据结构
@@ -37,10 +37,10 @@ def tool(
             }
         }
 
-        # 2. 将对应属性绑定到 func 上
-        func._tool_name = name
-        func._tool_description = description
-        func._tool_schema = tool_schema
+        # 2. 将对应属性绑定到 func 上（公开属性名，避免与“受保护成员”混淆）
+        setattr(func, "tool_name", name)
+        setattr(func, "tool_description", description)
+        setattr(func, "tool_schema", tool_schema)
         return func
     
     return decorator
@@ -72,16 +72,16 @@ class BaseTool:
 
         tools = []
         for _, method in inspect.getmembers(self, inspect.ismethod):
-            if hasattr(method, "_tool_schema"):
-                tools.append(getattr(method, "_tool_schema"))
+            if hasattr(method, "tool_schema"):
+                tools.append(getattr(method, "tool_schema"))
 
         self._tools_cache = tools
         return tools
 
     def has_tool(self, tool_name: str) -> bool:
         """判断是否存在指定的工具"""
-        for _, method in inspect.inspect.getmembers(self, inspect.ismethod):
-            if hasattr(method, "_tool_name") and getattr(method, "_tool_name") == tool_name:
+        for _, method in inspect.getmembers(self, inspect.ismethod):
+            if hasattr(method, "tool_name") and getattr(method, "tool_name") == tool_name:
                 return True
         return False
 
@@ -90,8 +90,8 @@ class BaseTool:
         """调用指定工具并获取结果"""
         # 1. 循环遍历工具集的所有方法
         for _, method in inspect.getmembers(self, inspect.ismethod):
-            # 2. 判断对应是否存在 _tool_name 属性
-            if hasattr(method, "_tool_name") and getattr(method, "_tool_name") == tool_name:
+            # 2. 判断对应是否存在 tool_name 属性
+            if hasattr(method, "tool_name") and getattr(method, "tool_name") == tool_name:
                 # 3. 筛选传递的 kwargs 参数，保留 method 对应的参数，其余的剔除
                 filtered_kwargs = self._filter_parameter(method, kwargs)
                 # 4. 调用方法获取工具结果
@@ -99,5 +99,3 @@ class BaseTool:
         
         # 5. 没找到对应工具
         return ValueError(f"工具[{tool_name}]未找到")
-
-    

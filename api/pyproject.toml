@@ -32,7 +32,12 @@ dependencies = [
 ]
 
 [tool.pylint.messages_control]
-disable = ["missing-module-docstring", "unnecessary-ellipsis"]
+disable = [
+    "missing-module-docstring",
+    "unnecessary-ellipsis",
+    "trailing-whitespace",
+    "useless-parent-delegation",
+]
 
 [tool.pylint.format]
 max-line-length = 130
