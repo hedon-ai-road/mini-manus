@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 import uuid
 
 from app.domain.models.file import File
+from app.domain.models.search import SearchResultItem
 from app.domain.models.plan import Plan, Step
 from app.domain.models.tool_result import ToolResult
 
@@ -63,8 +64,31 @@ class MCPToolContent(BaseModel):
     """MCP 工具内容"""
     result: Any # MCP 工具执行结果
 
-# todo: 工具扩展内容待完善
-ToolContent = Union[BrowserToolContent, MCPToolContent]
+class A2AToolContent(BaseModel):
+    """A2A 工具内容"""
+    a2a_result: Any # A2A 工具执行结果
+
+class SearchToolContent(BaseModel):
+    """搜索工具内容"""
+    results: List[SearchResultItem] # 搜索结果
+
+class ShellToolContent(BaseModel):
+    """Shell 工具内容"""
+    console: Any # 控制台内容
+
+class FileToolContent(BaseModel):
+    """文件工具内容"""
+    content: str # 文件内容
+
+# 工具扩展内容待完善，前端根据不同的工具类型展示不同的内容
+ToolContent = Union[
+    BrowserToolContent,
+    MCPToolContent,
+    A2AToolContent,
+    SearchToolContent,
+    ShellToolContent,
+    FileToolContent,
+]
 
 
 class ToolEvent(BaseEvent):
