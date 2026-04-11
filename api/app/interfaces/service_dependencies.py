@@ -1,5 +1,11 @@
+from app.application.services.file_service import FileService
+from app.domain.repositories import file_repository
+from app.domain.repositories.file_repository import FileRepository
 from app.infrastructure.external.health_checker.redis_health_checker import RedisHealthChecker
 from app.infrastructure.external.health_checker.postgres_health_checker import PostgresHealthChecker
+from app.infrastructure.repositories.db_file_repository import DBFileRepository
+from app.infrastructure.storage.oss import OSS, get_oss
+from app.infrastructure.external.file_storage.oss_file_storage import OSSFileStorage
 from app.infrastructure.storage.redis import get_redis
 from app.infrastructure.storage.redis import RedisClient
 from app.infrastructure.storage.posgres import get_db_session
@@ -12,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.application.services.status_service import StatusService
 from app.application.services.app_config_service import AppConfigService
 from app.infrastructure.repositories.file_app_config_repository import FileAppConfigRepository
+from app.interfaces.repository_dependencies import get_file_repository
 from core.config import get_settings
 
 
@@ -43,3 +50,19 @@ def get_status_service(
 
     return StatusService(checkers=[postgres_checker, redis_checker])
 
+
+@lru_cache()
+def get_file_service(
+    oss: OSS = Depends(get_oss),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> FileService:
+    """获取文件服务"""
+
+    file_repository = DBFileRepository(db_session=db_session)
+    file_storage = OSSFileStorage(
+        bucket=settings.oss_bucket,
+        oss=oss,
+        repository=file_repository,
+    )
+
+    return FileService(file_storage=file_storage, file_repository=file_repository)
