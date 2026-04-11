@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field
 import uuid
 
@@ -51,7 +51,7 @@ class StepEvent(BaseEvent):
 class MessageEvent(BaseEvent):
     """消息事件：人类/ai 消息"""
     type: Literal["message"] = "message"
-    role: Literal["user", "assistent"] = "assistent" # 消息角色
+    role: Literal["user", "assistant"] = "assistant" # 消息角色
     message: str = "" # 消息本身
     attachments: List[File] = Field(default_factory=list) # 附件列表
 
@@ -93,7 +93,7 @@ class DoneEvent(BaseEvent):
     type: Literal["done"] = "done"
 
 # 定义应用事件类型声明
-Event = Union[
+Event = Annotated[Union[
     PlanEvent,
     TitleEvent,
     StepEvent,
@@ -102,4 +102,4 @@ Event = Union[
     WaitEvent,
     ErrorEvent,
     DoneEvent,
-]
+], Field(discriminator="type")]

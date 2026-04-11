@@ -40,7 +40,7 @@ class ReActAgent(BaseAgent):
                     # 6.工具如果在调用中，我们需要返回一条消息告知用户需要让用户处理什么
                     if event.status == ToolEventStatus.CALLING:
                         yield MessageEvent(
-                            role="assistent",
+                            role="assistant",
                             message=event.function_args.get("text", "")
                         )
                     elif event.status == ToolEventStatus.CALLED:
@@ -103,7 +103,7 @@ class ReActAgent(BaseAgent):
 
                 # 7.返回消息事件并将消息+附件进行相应
                 yield MessageEvent(
-                    role="assistent",
+                    role="assistant",
                     message=message.message,
                     attachments=attachments,
                 )
