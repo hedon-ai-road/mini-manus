@@ -11,6 +11,7 @@ from app.domain.models.memory import Memory
 from app.domain.models.message import Message
 from app.domain.models.tool_result import ToolResult
 from app.domain.models.app_config import AgentConfig
+from app.domain.repositories.session_repository import SessionRepository
 from app.domain.services.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -25,21 +26,25 @@ class BaseAgent(ABC):
 
     def __init__(
         self,
-        agent_config: AgentConfig,  # Agent 配置
-        llm: LLM,                   # 语言模型协议
-        memory: Memory,             # 记忆
-        json_parser: JsonParser,    # JSON 输出解析器
-        tools: List[BaseTool],      # 工具列表
+        session_id: str,                        # 会话 ID
+        session_repository: SessionRepository,  # 会话仓库
+        agent_config: AgentConfig,              # Agent 配置
+        llm: LLM,                               # 语言模型协议
+        json_parser: JsonParser,                # JSON 输出解析器
+        tools: List[BaseTool],                  # 工具列表
     ) -> None:
+        self._session_id = session_id
+        self._session_repository = session_repository
         self._agent_config = agent_config
         self._llm = llm
-        self._memory = memory
         self._json_parser = json_parser
         self._tools = tools
+        self._memory: Optional[Memory] = None
 
-    @property
-    def memory(self) -> Memory:
-        return self._memory
+    async def _ensure_memory(self) -> None:
+        """确保 Agent 记忆存在"""
+        if self._memory is None:
+            self._memory = await self._session_repository.get_memory(self._session_id, self.name)
 
     def _get_available_tools(self) -> List[Dict[str, Any]]:
         """获取 Agent 所有可用的工具列表参数声明"""
@@ -68,7 +73,7 @@ class BaseAgent(ABC):
             try:
                 # 4. 调用语言模型获取响应内容
                 message = await self._llm.invoke(
-                    messages=messages,
+                    messages=self._memory.get_messages(),
                     tools=self._get_available_tools(),
                     response_format=response_format,
                     tool_choice=self._tool_choice,
@@ -92,7 +97,7 @@ class BaseAgent(ABC):
                         filtered_message["tool_calls"] = message.get("tool_calls")[:1]
                 else:
                     # 8. 非 AI 消息则记录日志并存储消息
-                    logger.warning(f"LLM 响应内容无法确认消息角色: {message.get("role")}")
+                    logger.warning(f"LLM 响应内容无法确认消息角色: {message.get('role')}")
                     filtered_message = message
 
                 # 9. 将消息添加到记忆中
@@ -119,6 +124,8 @@ class BaseAgent(ABC):
     
     async def _add_to_memory(self, messages: List[Dict[str, Any]]) -> None:
         """将对应的信息添加到记忆中"""
+        await self._ensure_memory()
+        
         if self._memory.empty:
             self._memory.add_message({
                 "role": "system",
@@ -126,14 +133,20 @@ class BaseAgent(ABC):
             })
         self._memory.add_messages(messages)
 
+        await self._session_repository.save_memory(self._session_id, self.name, self._memory)
+    
     async def compact_memory(self) -> None:
         """压缩记忆"""
+        await self._ensure_memory()
         self._memory.compact()
+        await self._session_repository.save_memory(self._session_id, self.name, self._memory)
 
     async def roll_back(self, message: Message) -> None:
         """Agent 状态回滚，该函数用于确保 Agent 消息列表状态是正确的，用于发送新消息、停止任务、通知用户"""
+        await self._ensure_memory()
+        
         # 1. 取出记忆中的最后一条消息，检查是否是工具调用
-        last_message = self._memory.get_last_message()
+        last_message = await self._memory.get_last_message()
         if (
             not last_message or
             not last_message.get("tool_calls") or
@@ -150,7 +163,7 @@ class BaseAgent(ABC):
 
         # 4. 判断当前工具是否是通知用户(message_ask_user)
         if function_name == "message_ask_user":
-            self.memory.add_message({
+            self._memory.add_message({
                 "role": "tool",
                 "tool_call_id": tool_call_id,
                 "function_name": function_name,
@@ -159,6 +172,8 @@ class BaseAgent(ABC):
         else:
             # 5. 否则直接删除最后一条消息
             self._memory.roll_back()
+
+        await self._session_repository.save_memory(self._session_id, self.name, self._memory)
 
     async def invoke(self, query: str, format: Optional[str] = None) -> AsyncGenerator[Event, None]:
         """传递消息+响应格式调用程序生成异步迭代内容"""
@@ -207,7 +222,7 @@ class BaseAgent(ABC):
                     "role": "tool",
                     "tool_call_id": tool_call_id,
                     "function_name": function_name,
-                    "content": result.model_dump(),
+                    "content": result.model_dump_json(),
                 })
             
             message = await self._invoke_llm(tool_messages)
