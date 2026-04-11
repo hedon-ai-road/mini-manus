@@ -13,7 +13,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base
+from app.infrastructure.models.base import Base
 from app.domain.models.session import Session
 
 class SessionModel(Base):
@@ -23,7 +23,7 @@ class SessionModel(Base):
         PrimaryKeyConstraint("id", name="pk_sessions_id"),
     )
 
-    id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, default=lambda: str(uuid.uuid4())) # 会话 ID
+    id: Mapped[str] = mapped_column(String(255), nullable=False, default=lambda: str(uuid.uuid4())) # 会话 ID
     sandbox_id: Mapped[str] = mapped_column(String(255), nullable=False) # 沙箱 ID
     task_id: Mapped[str] = mapped_column(String(255), nullable=False) # 任务 ID
     title: Mapped[str] = mapped_column(String(255), nullable=False, server_default=text("''::character varying")) # 会话标题
@@ -72,3 +72,4 @@ class SessionModel(Base):
         # 3. 更新 ORM 模型
         for field, value in {**base_data, **complex_data}.items():
             setattr(self, field, value)
+        

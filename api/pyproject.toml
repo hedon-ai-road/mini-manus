@@ -30,3 +30,9 @@ dependencies = [
     "sqlalchemy>=2.0.46",
     "uvicorn[standard]>=0.38.0",
 ]
+
+[tool.pylint.messages_control]
+disable = ["missing-module-docstring", "unnecessary-ellipsis"]
+
+[tool.pylint.format]
+max-line-length = 130
