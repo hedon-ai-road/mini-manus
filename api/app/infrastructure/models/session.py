@@ -34,7 +34,7 @@ class SessionModel(Base):
     files: Mapped[List[Dict[str, Any]]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb")) # 文件列表
     memories: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb")) # 记忆列表
     status: Mapped[str] = mapped_column(String(255), nullable=False, server_default=text("''::character varying")) # 会话状态
-    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP(0)")) # 更新时间
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, onupdate=datetime.now, server_default=text("CURRENT_TIMESTAMP(0)")) # 更新时间
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP(0)")) # 创建时间
 
     @classmethod
