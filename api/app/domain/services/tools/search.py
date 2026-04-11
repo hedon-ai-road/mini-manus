@@ -1,6 +1,6 @@
 from typing import Optional
 from app.domain.external.search import SearchEngine
-from app.domain.models.search import SearchResult
+from app.domain.models.search import SearchResults
 from app.domain.models.tool_result import ToolResult
 from .base import BaseTool, tool
 
@@ -28,5 +28,5 @@ class SearchTool(BaseTool):
             "required": ["query"]
         }
     )
-    async def search_web(self, query: str, date_range: Optional[str] = None) -> ToolResult[SearchResult]:
+    async def search_web(self, query: str, date_range: Optional[str] = None) -> ToolResult[SearchResults]:
         return await self.search_engine.invoke(query, date_range)

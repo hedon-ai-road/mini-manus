@@ -33,9 +33,7 @@ class Memory(BaseModel):
         """记忆压缩，将记忆中已经执行的工具(搜索/网页源码获取/浏览器访问结果)这类已经执行过的消息进行压缩简化"""
         for message in self.messages:
             if self.get_message_role(message) == "tool":
-                # todo: 工具的名字待定
-                if message.get("function_name") in []:
-                    # todo: 工具的调用结果待确定
+                if message.get("function_name") in ["browser_view", "browser_navigate"]:
                     message["content"] = "(REMOVED)"
                     logger.debug(f"从记忆中移除对应工具的结果: {message['function_name']}")
 

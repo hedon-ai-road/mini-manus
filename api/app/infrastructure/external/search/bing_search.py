@@ -6,7 +6,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from app.domain.external.search import SearchEngine
-from app.domain.models.search import SearchResult, SearchResultItem
+from app.domain.models.search import SearchResults, SearchResultItem
 from app.domain.models.tool_result import ToolResult
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ class BingSearchEngine(SearchEngine):
         }
         self.cookies = httpx.Cookies()
 
-    async def invoke(self, query: str, date_range: Optional[str] = None) -> ToolResult[SearchResult]:
+    async def invoke(self, query: str, date_range: Optional[str] = None) -> ToolResult[SearchResults]:
         # 1. 构建请求参数
         params = {"q": query}
         if date_range and date_range != "all":
@@ -153,7 +153,7 @@ class BingSearchEngine(SearchEngine):
                                 continue
                 
                 # 6. 返回结果
-                results = SearchResult(
+                results = SearchResults(
                     query=query,
                     date_range=date_range,
                     total_results=total_results,
@@ -162,7 +162,7 @@ class BingSearchEngine(SearchEngine):
                 return ToolResult(success=True, data=results)
         except Exception as e:
             logger.error(f"Bing 搜索出错: {str(e)}")
-            error_result = SearchResult(
+            error_result = SearchResults(
                 query=query,
                 date_range=date_range,
                 total_results=0,

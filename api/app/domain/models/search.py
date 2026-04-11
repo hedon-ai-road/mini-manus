@@ -7,7 +7,7 @@ class SearchResultItem(BaseModel):
     title: str # 标题
     snippet: str = "" # 摘要
 
-class SearchResult(BaseModel):
+class SearchResults(BaseModel):
     """搜索结果数据模型"""
     query: str # 查询 query
     date_range: Optional[str] = None # 日期筛选范围

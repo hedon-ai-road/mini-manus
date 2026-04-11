@@ -8,7 +8,7 @@ class TaskRunner(ABC):
     """任务运行器，负责任务的执行，关心的是如何执行任务、销毁任务、释放资源"""
 
     @abstractmethod
-    async def invoke(self, taks: "Task") -> None:
+    async def invoke(self, task: "Task") -> None:
         """调用任务并执行"""
         raise NotImplementedError
 

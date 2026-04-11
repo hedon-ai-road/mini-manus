@@ -36,7 +36,6 @@ class Plan(BaseModel):
     message: str = "" # 用户传递的消息
     status: ExecutionStatus = ExecutionStatus.PENDING # 规划状态
     error: Optional[str] = None # 错误信息
-    # todo: 未预留 result 用于记录规划的结果信息
     
     @property
     def done(self) -> bool:
