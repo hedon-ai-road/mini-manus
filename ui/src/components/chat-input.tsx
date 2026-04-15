@@ -20,7 +20,7 @@ export function ChatInput({ className }: ChatInputProps) {
     ]
 
     return (
-        <div className={cn("flex flex-col bg-white w-full rounded-2xl py-3", className)}>
+        <div className={cn("flex flex-col bg-white w-full rounded-2xl py-3 border", className)}>
             {/* 顶部的文件列表 */}
             <div className="w-full px-4 mb-1">
                 <ScrollArea className="w-full whitespace-nowrap">
