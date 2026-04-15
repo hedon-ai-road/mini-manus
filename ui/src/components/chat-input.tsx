@@ -2,10 +2,8 @@
 
 import { cn } from "@/lib/utils";
 import { ArrowUp, FileText, Paperclip, XCircle } from "lucide-react";
-import { Avatar, AvatarGroupCount } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "./ui/item";
-import { ScrollArea, ScrollBar } from "./ui/scroll-area";
 
 interface ChatInputProps {
     className?: string;
@@ -17,27 +15,29 @@ export function ChatInput({ className }: ChatInputProps) {
         { "id": 2, "extension": "pdf", "filename": "go+java2.pdf", "size": "2.52MB" },
         { "id": 3, "extension": "pdf", "filename": "go+java3.pdf", "size": "2.52MB" },
         { "id": 4, "extension": "pdf", "filename": "go+java4.pdf", "size": "2.52MB" },
+        { "id": 5, "extension": "pdf", "filename": "go+java5.pdf", "size": "2.52MB" },
+        { "id": 6, "extension": "pdf", "filename": "go+java6.pdf", "size": "2.52MB" },
+        { "id": 7, "extension": "pdf", "filename": "go+java7.pdf", "size": "2.52MB" },
+        { "id": 8, "extension": "pdf", "filename": "go+java8.pdf", "size": "2.52MB" },
+        { "id": 9, "extension": "pdf", "filename": "go+java9.pdf", "size": "2.52MB" },
+        { "id": 10, "extension": "pdf", "filename": "go+java10.pdf", "size": "2.52MB" },
     ]
 
     return (
         <div className={cn("flex flex-col bg-white w-full rounded-2xl py-3 border", className)}>
             {/* 顶部的文件列表 */}
             <div className="w-full px-4 mb-1">
-                <ScrollArea className="w-full whitespace-nowrap">
-                    <div className="flex w-max min-w-0 gap-4 pb-1">
+                <div className="scrollbar w-full overflow-x-auto overflow-y-hidden">
+                    <div className="flex w-max min-w-0 gap-3 pb-1">
                         {files.map((file) => (
                             <Item
                                 key={file.id}
                                 variant="muted"
-                                className="flex-shrink-0 p-2 gap-2"
+                                size="xs"
+                                className="w-auto shrink-0 gap-2 py-1.5 pl-2 pr-1"
                             >
-                                {/* 左侧文件图片 */}
-                                <ItemMedia>
-                                    <Avatar className="size-8">
-                                        <AvatarGroupCount>
-                                            <FileText/>
-                                        </AvatarGroupCount>
-                                    </Avatar>
+                                <ItemMedia variant="icon">
+                                    <FileText className="size-4 text-muted-foreground" />
                                 </ItemMedia>
                                 {/* 文件信息 */}
                                 <ItemContent className="gap-0">
@@ -55,8 +55,7 @@ export function ChatInput({ className }: ChatInputProps) {
                             </Item>
                         ))}
                     </div>
-                    <ScrollBar orientation="horizontal" />
-                </ScrollArea>
+                </div>
             </div>
             {/* 中间输入框 */}
             <div className="px-4 mb-3">
