@@ -1,10 +1,11 @@
 'use client'
 
 import { cn } from "@/lib/utils"
-import { Languages } from "lucide-react"
+import { CheckIcon, ChevronDown, Languages } from "lucide-react"
 import { ManusIcon } from "./manus-icon"
 import { MarkdownContent } from "./markdown-content"
 import { ToolUse } from "./tool-use"
+import { Button } from "./ui/button"
 
 
 export interface ChatMessageProps {
@@ -72,7 +73,42 @@ export function ChatMessage({ className, message }: ChatMessageProps) {
         )
     } else if (message.type === "step") {
         return (
-            <div> 步骤消息</div>
+            <div className="flex flex-col">
+                {/* 步骤描述 */}
+                <div className="text-sm w-full clickable flex gap-2 justify-between group/header truncate text-gray-700">
+                    <div className="flex flex-row gap-2 justify-start items-center truncate min-w-0 flex-1">
+                        {/* 已完成状态/未完成状态 */}
+                        <div className="w-4 h-4 flex-shrink-0 flex items-center justify-center border rounded-[15px] bg-gray-300">
+                            <CheckIcon className="text-white" size={10}/>
+                        </div>
+                        {/* 步骤描述 */}
+                        <div className="truncate font-medium markdown-content min-w-0">
+                            编写一个Golang程序文件，实现冒泡排序算法，包括必要的函数和主函数...
+                        </div>
+                        {/* 展开 or 折叠 icon */}
+                        <Button variant="ghost" size="icon-xs">
+                            <ChevronDown/>
+                        </Button>
+                    </div>
+                </div>
+                {/* 步骤详情 */}
+                <div className="flex">
+                    <div className="w-6 relative">
+                        <div
+                            className="h-[calc(100%+14px)] border-l border-dashed border-absolute start-[8px] top-0 bottom-0"
+                        >
+                        </div>
+                    </div>
+                    {/* 调用工具列表信息 */}
+                    <div className="flex flex-col gap-3 flex-1 min-w-0 overflow-hidden pt-2 transition-[max-height,opacity] duration-150 ease-in-out">
+                        {
+                            [1,2,3,4].map(item => (
+                                <ToolUse key={item}/>
+                            ))
+                        }
+                    </div>
+                </div>
+            </div>
         )
     } else if (message.type === "attachments") {
         return (
