@@ -2,6 +2,7 @@
 
 import { ChatHeader } from "@/components/chat-header";
 import { ChatInput } from "@/components/chat-input";
+import { SuggestedQuestions } from "@/components/suggested-questions";
 
 export default function Page() {
   return (
@@ -18,6 +19,7 @@ export default function Page() {
         {/* 对话框 */}
         <ChatInput className="mb-4"/>
         {/* 推荐对话内容 */}
+        <SuggestedQuestions className="mb-4"/>
       </div>
     </div>
   );
