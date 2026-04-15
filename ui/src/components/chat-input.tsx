@@ -29,7 +29,7 @@ export function ChatInput({ className }: ChatInputProps) {
                             <Item
                                 key={file.id}
                                 variant="muted"
-                                className="w-auto shrink-0 p-2 gap-2"
+                                className="flex-shrink-0 p-2 gap-2"
                             >
                                 {/* 左侧文件图片 */}
                                 <ItemMedia>

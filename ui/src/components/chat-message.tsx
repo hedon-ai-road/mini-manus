@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils"
 import { CheckIcon, ChevronDown, Languages } from "lucide-react"
+import { AttachmentsMessage } from "./attachments-message"
 import { ManusIcon } from "./manus-icon"
 import { MarkdownContent } from "./markdown-content"
 import { ToolUse } from "./tool-use"
@@ -112,7 +113,7 @@ export function ChatMessage({ className, message }: ChatMessageProps) {
         )
     } else if (message.type === "attachments") {
         return (
-            <div> 附件消息</div>
+            <AttachmentsMessage role={message.role ?? 'user'}/>
         )
     } else if (message.type === "error") {
         return (
