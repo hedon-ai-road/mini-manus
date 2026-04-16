@@ -1,3 +1,9 @@
+from fastapi import Depends
+import logging
+from functools import lru_cache
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.application.services.file_service import FileService
 from app.domain.repositories import file_repository
 from app.domain.repositories.file_repository import FileRepository
@@ -9,17 +15,13 @@ from app.infrastructure.external.file_storage.oss_file_storage import OSSFileSto
 from app.infrastructure.storage.redis import get_redis
 from app.infrastructure.storage.redis import RedisClient
 from app.infrastructure.storage.posgres import get_db_session
-from fastapi import Depends
-import logging
-from functools import lru_cache
-
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.application.services.session_service import SessionService
 from app.application.services.status_service import StatusService
 from app.application.services.app_config_service import AppConfigService
 from app.infrastructure.repositories.file_app_config_repository import FileAppConfigRepository
-from app.interfaces.repository_dependencies import get_file_repository
 from core.config import get_settings
+from app.interfaces.repository_dependencies import get_db_session_repository
+from app.domain.repositories.session_repository import SessionRepository
 
 
 logger = logging.getLogger(__name__)
@@ -66,3 +68,10 @@ def get_file_service(
     )
 
     return FileService(file_storage=file_storage, file_repository=file_repository)
+
+@lru_cache()
+def get_session_service(
+    session_repository: SessionRepository = Depends(get_db_session_repository),
+) -> SessionService:
+    """获取会话服务"""
+    return SessionService(session_repository=session_repository)
