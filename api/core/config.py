@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # 沙箱配置
     sandbox_address: str = ""
-    sandbox_image: str = "mini-manus-sandbox"
+    sandbox_image: str = "devops-mini_manus_sandbox_dev"
     sandbox_name_prefix: str = "mini-manus-sandbox"
     sandbox_ttl_minutes: int = 60
     sandbox_network: str = "mini-manus-network"

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from sqlalchemy import (
     String,
@@ -24,8 +24,8 @@ class SessionModel(Base):
     )
 
     id: Mapped[str] = mapped_column(String(255), nullable=False, default=lambda: str(uuid.uuid4())) # 会话 ID
-    sandbox_id: Mapped[str] = mapped_column(String(255), nullable=False) # 沙箱 ID
-    task_id: Mapped[str] = mapped_column(String(255), nullable=False) # 任务 ID
+    sandbox_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True) # 沙箱 ID（首轮对话前可为空）
+    task_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True) # 任务 ID（创建任务前可为空）
     title: Mapped[str] = mapped_column(String(255), nullable=False, server_default=text("''::character varying")) # 会话标题
     unread_message_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0")) # 未读消息数量
     latest_message: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''::text")) # 最后一条消息

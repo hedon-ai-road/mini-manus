@@ -35,7 +35,7 @@ class FileAppConfigRepository(AppConfigRepository):
             )
             self.save(default_app_config)
 
-    async def load(self) -> Optional[AppConfig]:
+    def load(self) -> Optional[AppConfig]:
         """从本地 yaml 文件中加载应用配置"""
         self._create_default_app_config_if_not_exists()
 
@@ -47,7 +47,7 @@ class FileAppConfigRepository(AppConfigRepository):
             logger.error(f"读取应用配置失败：{str(e)}")
             raise ServerError("读取应用配置失败，请稍后重试")
 
-    async def save(self, app_config: AppConfig) -> None:
+    def save(self, app_config: AppConfig) -> None:
         """将 app_config 存储到本地 yaml 配置"""
         lock = FileLock(self._lock_file, timeout=5)
 

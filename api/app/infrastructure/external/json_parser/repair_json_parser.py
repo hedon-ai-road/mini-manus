@@ -12,9 +12,9 @@ class RepairJsonParser(JsonParser):
     async def invoke(self, text: str, default_value: Optional[Any] = None) -> Union[Dict, List, Any]:
         """传递文本，并使用 json-repair 库进行修复"""
         logger.info(f"解析 json 文本: {text}")
-        if not text or text.strip():
+        if not text or not text.strip():
             if default_value is not None:
                 return default_value
             raise ValueError("json 文本为空，且无默认值")
 
-        return json_repair.repair_json(text, ensure_ascii=False)
+        return json_repair.repair_json(text, ensure_ascii=False, return_objects=True)

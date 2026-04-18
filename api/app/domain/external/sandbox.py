@@ -1,4 +1,3 @@
-from _typeshed import Self
 from typing import BinaryIO, Optional, Protocol
 
 from app.domain.external.browser import Browser
@@ -127,11 +126,11 @@ class Sandbox(Protocol):
         ...
 
     @classmethod
-    async def create(cls) -> Self:
+    async def create(cls) -> "Sandbox":
         """类方法，用于快速创建一个沙箱"""
         ...
 
     @classmethod
-    async def get(cls, id: str) -> Optional[Self]:
+    async def get(cls, id: str) -> Optional["Sandbox"]:
         """类方法，根据传递的id获取沙箱实例"""
         ...

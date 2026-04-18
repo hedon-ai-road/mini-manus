@@ -25,8 +25,8 @@ class SearchTool(BaseTool):
                 "enum": ["all", "past_hour", "past_day", "past_week", "past_month", "past_year"],
                 "description": "（可选）搜索结果的时间范围过滤。当用户询问特定时效性的新闻或事件时（如'昨天'、'上周'），必须指定此参数，默认为'all'。"
             },
-            "required": ["query"]
-        }
+        },
+        required=["query"]
     )
     async def search_web(self, query: str, date_range: Optional[str] = None) -> ToolResult[SearchResults]:
         return await self.search_engine.invoke(query, date_range)

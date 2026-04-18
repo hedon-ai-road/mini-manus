@@ -59,7 +59,7 @@ class PlannerAgent(BaseAgent):
                 yield PlanEvent(plan=plan, status=PlanEventStatus.CREATED)
             else:
                 # 返回不是消息事件的事件
-                yield Event
+                yield event
 
     async def update_plan(self, plan: Plan, step: Step) -> AsyncGenerator[BaseEvent, None]:
         """根据传递的原始规划+子步骤更新事件"""
@@ -103,4 +103,4 @@ class PlannerAgent(BaseAgent):
                 yield PlanEvent(plan=plan, status=PlanEventStatus.UPDATED)
             else:
                 # 其他事件则直接返回
-                yield Event
+                yield event

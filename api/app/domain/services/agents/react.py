@@ -32,9 +32,9 @@ class ReActAgent(BaseAgent):
         yield StepEvent(step=step, status=StepEventStatus.STARTED)
 
         # 3.调用 invoke 获取 Agent 的返回内容
-        async for event in self.invoke(self):
+        async for event in self.invoke(query):
             # 4.判断事件类型执行不同操作
-            if isinstance(eval, ToolEvent):
+            if isinstance(event, ToolEvent):
                 # 5.工具事件需要判断工具的名称是否为 message_ask_user
                 if event.function_name == "message_ask_user":
                     # 6.工具如果在调用中，我们需要返回一条消息告知用户需要让用户处理什么
@@ -77,7 +77,7 @@ class ReActAgent(BaseAgent):
                 yield StepEvent(step=step, status=StepEventStatus.FAILED)
             else:
                 # 15. 其他场景将事件直接返回
-                yield Event
+                yield event
         
         # 16.循环迭代完成后代表子步骤已实现，需要更新状态
         step.status = ExecutionStatus.COMPLETED

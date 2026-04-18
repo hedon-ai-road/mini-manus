@@ -6,7 +6,7 @@ import socket
 import uuid
 import docker
 import io
-from _typeshed import Self
+from docker.errors import ImageNotFound as DockerImageNotFound
 from docker.errors import NotFound as DockerNotFoundError
 from typing import BinaryIO, Optional
 from async_lru import alru_cache
@@ -20,14 +20,29 @@ from core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+
+def _require_local_sandbox_image(client: docker.DockerClient, image_name: str) -> None:
+    """Fail fast if the image is missing; otherwise docker-py pulls from Docker Hub and errors obscurely."""
+    try:
+        client.images.get(image_name)
+    except DockerImageNotFound:
+        raise AppException(
+            f"本地不存在 Docker 镜像 {image_name!r}。请在项目根目录（包含 api/ 与 sandbox/）执行构建后再试：\n"
+            f"  docker build -f sandbox/.devops/Dockerfile -t {image_name}:latest sandbox"
+        ) from None
+
+
 class DockerSandbox(Sandbox):
     def __init__(
         self,
         ip: Optional[str] = None,
-        container_name: Optional[str] = None
+        container_name: Optional[str] = None,
     ) -> None:
         """构造函数，完成 Docker 沙箱扩展构建"""
-        self.client = httpx.AsyncClient(timeout=600)
+        self.client = httpx.AsyncClient(
+            timeout=httpx.Timeout(600.0, connect=5.0),
+            trust_env=False,
+        )
         self._ip = ip
         self._container_name = container_name
         self._base_url = f"http://{ip}:9528"
@@ -90,7 +105,7 @@ class DockerSandbox(Sandbox):
             raise
 
     @classmethod
-    def _create_task(cls) -> Self:
+    def _create_task(cls) -> "DockerSandbox":
         """创建沙箱容器的异步任务"""
         settings = get_settings()
 
@@ -103,14 +118,15 @@ class DockerSandbox(Sandbox):
             # 创建 Docker 客户端
             
             client = docker.from_env()
+            _require_local_sandbox_image(client, image_name)
 
             # 创建 Docker 容器
             container: Model = client.containers.run(
                 image=image_name,
                 name=container_name,
                 network=settings.sandbox_network if settings.sandbox_network else None,
-                detach=True, # 后台运行
-                remove=True, # 容器退出后删除
+                detach=True,
+                remove=True,
                 environment={
                     "SERVICE_TIMEOUT_MINUTES": settings.sandbox_ttl_minutes,
                     "CHROME_ARGS": settings.sandbox_chrome_args,
@@ -134,7 +150,7 @@ class DockerSandbox(Sandbox):
 
         
     @classmethod
-    async def create(cls) -> Self:
+    async def create(cls) -> "DockerSandbox":
         """创建沙箱容器"""
         settings = get_settings()
 
@@ -173,7 +189,7 @@ class DockerSandbox(Sandbox):
 
     @classmethod
     @alru_cache(maxsize=128, typed=True)
-    async def get(cls, id: str) -> Self | None:
+    async def get(cls, id: str) ->  Optional["DockerSandbox"]:
         """根据传递的 id 获取对应的 Docker Sandbox 实例"""
 
         # 直连沙箱直接获取 IP
@@ -244,7 +260,11 @@ class DockerSandbox(Sandbox):
                 logger.info("supervisor 进程中所有服务均正常运行")
                 return
             except Exception as e:
-                logger.error(f"请求 supervisor 状态失败: {str(e)}")
+                logger.error(
+                    "请求 supervisor 状态失败: %s: %r",
+                    type(e).__name__,
+                    e,
+                )
                 await asyncio.sleep(retry_interval)
 
         logger.error(f"经过 {max_retries} 次重试，supervisor 服务仍未正常运行")

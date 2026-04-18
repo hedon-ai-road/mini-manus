@@ -57,28 +57,31 @@ class RedisStreamMessageQueue(MessageQueue):
         return await self._redis.client.xadd(self._stream_name, {"data": message})
 
     async def get(self, start_id: str = None, block_ms: int = None) -> Tuple[str, Any]:
-        """根据传递的开始 id + 阻塞实践，获取 1 条数据"""
-        logger.debug(f"从消息队列[{self._stream_name}]中获取一条消息")
+        """根据传递的开始 id + 阻塞时间，获取 1 条数据（阻塞读需用 XREAD，XRANGE 不支持 BLOCK）"""
         if start_id is None:
-            start_id = '0'
-        
-        messages = await self._redis.client.xrange(
+            start_id = "0"
+
+        kwargs: dict = {"count": 1}
+        if block_ms is not None and block_ms > 0:
+            kwargs["block"] = block_ms
+
+        messages = await self._redis.client.xread(
             {self._stream_name: start_id},
-            count=1,
-            block=block_ms,
+            **kwargs,
         )
         if not messages:
             return None, None
-        
+
         stream_messages = messages[0][1]
         if not stream_messages:
             return None, None
-        
+
         message_id, message_data = stream_messages[0]
         try:
             return message_id, message_data.get("data")
         except Exception as e:
             logger.error(f"从消息队列[{self._stream_name}]获取数据失败: {str(e)}")
+            return None, None
     
     async def pop(self) -> Tuple[str, Any]:
         """获取并移出消息队列中的第一条消息"""

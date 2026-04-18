@@ -19,7 +19,7 @@ class AppConfigService:
 
     async def _load_app_config(self) -> AppConfig:
         """加载所有应用配置信息"""
-        return await self.app_config_repository.load()
+        return self.app_config_repository.load()
 
     async def get_llm_config(self) -> LLMConfig:
         """获取 LLM 提供商配置"""
@@ -32,7 +32,7 @@ class AppConfigService:
             llm_config.api_key = app_config.llm_config.api_key
         
         app_config.llm_config = llm_config
-        await self.app_config_repository.save(app_config)
+        self.app_config_repository.save(app_config)
         return app_config.llm_config
 
     async def get_agent_config(self) -> AgentConfig:
@@ -43,7 +43,7 @@ class AppConfigService:
         """根据传递的 agent_config 更新 Agent 配置"""
         app_config = await self._load_app_config()
         app_config.agent_config = agent_config
-        await self.app_config_repository.save(app_config)
+        self.app_config_repository.save(app_config)
         return app_config.agent_config
 
     async def get_mcp_servers(self) -> List[ListMCPServerItem]:
@@ -76,7 +76,7 @@ class AppConfigService:
         """根据传递的数据新增或更新 MCP 配置"""
         app_config = await self._load_app_config()
         app_config.mcp_config.mcpServers.update(mcp_config.mcpServers)
-        await self.app_config_repository.save(app_config)
+        self.app_config_repository.save(app_config)
         return app_config.mcp_config
 
     async def delete_mcp_server(self, server_name: str) -> MCPConfig:
@@ -86,7 +86,7 @@ class AppConfigService:
             raise NotFoundError(f"该 MCP 服务[{server_name}]不存在，请核实后重试")
 
         del app_config.mcp_config.mcpServers[server_name]
-        await self.app_config_repository.save(app_config)
+        self.app_config_repository.save(app_config)
         return app_config.mcp_config
 
     async def set_mcp_server_enabled(self, server_name: str, enabled: bool):
@@ -96,7 +96,7 @@ class AppConfigService:
             raise NotFoundError(f"该 MCP 服务[{server_name}]不存在，请核实后重试")
 
         app_config.mcp_config.mcpServers[server_name].enabled = enabled
-        await self.app_config_repository.save(app_config)
+        self.app_config_repository.save(app_config)
 
     async def create_a2a_server(self, base_url: str) -> A2AConfig:
         """根据传递的配置新增a2a服务器"""

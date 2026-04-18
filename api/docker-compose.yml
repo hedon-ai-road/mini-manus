@@ -1,4 +1,28 @@
 services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mini-manus-api
+    ports:
+      - "9527:9527"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      SQLALCHEMY_DATABASE_URI: postgresql+asyncpg://admin:admin123@mini-manus-postgres:5432/mini_manus
+      REDIS_HOST: mini-manus-redis
+      REDIS_PORT: 6379
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - mini-manus-network
+
   postgres:
     image: postgres:15-alpine
     container_name: mini-manus-postgres
@@ -46,3 +70,4 @@ volumes:
 networks:
   mini-manus-network:
     driver: bridge
+    name: mini-manus-network

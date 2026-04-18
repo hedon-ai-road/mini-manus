@@ -146,7 +146,7 @@ class BaseAgent(ABC):
         await self._ensure_memory()
         
         # 1. 取出记忆中的最后一条消息，检查是否是工具调用
-        last_message = await self._memory.get_last_message()
+        last_message = self._memory.get_last_message()
         if (
             not last_message or
             not last_message.get("tool_calls") or

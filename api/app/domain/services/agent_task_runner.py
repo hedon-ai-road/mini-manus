@@ -30,7 +30,7 @@ from app.domain.external.sandbox import Sandbox
 
 logger = logging.getLogger(__name__)
 
-class AgenTaskRunner(TaskRunner):
+class AgentTaskRunner(TaskRunner):
     """基于 Agent 智能体的任务运行器"""
 
     def __init__(
@@ -82,6 +82,9 @@ class AgenTaskRunner(TaskRunner):
             # 循环读取任务中的输入消息队列
             while not await task.input_stream.is_empty():
                 event = await self._pop_event(task)
+                if event is None:
+                    logger.warning("AgentTaskRunner 弹出空事件，跳过")
+                    continue
                 message = ""
 
                 # 判断事件类型是否为消息事件，如果是则处理消息并将附近同步到沙箱中
@@ -175,10 +178,10 @@ class AgenTaskRunner(TaskRunner):
 
     async def _pop_event(self, task: Task) -> Event:
         """从指定任务的消息队列中弹出事件数据"""
-        event_id, event_str = await task.output_stream.pop()
+        event_id, event_str = await task.input_stream.pop()
         if event_str is None:
             logger.warning(f"AgentTaskRunner 收到空消息")
-            return
+            return None
         
         event = TypeAdapter(Event).validate_json(event_str)
         event.id = event_id
