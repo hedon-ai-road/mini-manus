@@ -80,7 +80,7 @@ class AgentService:
                     await uow.session.update_latest_message(
                         session_id=session_id,
                         message=message,
-                        timestamp=timestamp,
+                        timestamp=timestamp or datetime.now(),
                     )
 
                 # 从文件数据库中查询数据并更新 attachments 实际内容，并返回人类消息事件
@@ -192,3 +192,22 @@ class AgentService:
         async with self._uow_factory() as uow:
             await uow.session.save(session)
         return task
+
+    async def stop_session(self, session_id: str) -> None:
+        """根据传递的会话id停止对应任务会话"""
+
+        # 检查会话是否存在
+        async with self._uow_factory() as uow:
+            session = await uow.session.get_by_id(session_id)
+        if not session:
+            logger.error(f"会话[{session_id}]不存在")
+            raise NotFoundError(f"会话[{session_id}]不存在")
+        
+        # 根据会话获取任务信息
+        task = await self._get_task(session)
+        if task:
+            task.cancel()
+
+        # 更新会话状态
+        async with self._uow_factory() as uow:
+            await uow.session.update_status(session_id, SessionStatus.COMPLETED)
