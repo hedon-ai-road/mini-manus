@@ -112,7 +112,7 @@ class AgentService:
             logger.info(f"会话[{session_id}]任务实例: {task}")
 
             # 从任务流中读取数据（勿用 not task.done 作为循环条件：任务已结束时 Redis 里可能仍有未读事件）
-            while task and not task.done:
+            while task:
                 event_id, event_str = await task.output_stream.get(start_id=latest_event_id, block_ms=0)
                 if event_id is not None:
                     latest_event_id = event_id
