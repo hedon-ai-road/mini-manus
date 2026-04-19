@@ -1,6 +1,6 @@
 from abc import ABC
 import logging
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 import asyncio
 import uuid
 
@@ -11,7 +11,7 @@ from app.domain.models.memory import Memory
 from app.domain.models.message import Message
 from app.domain.models.tool_result import ToolResult
 from app.domain.models.app_config import AgentConfig
-from app.domain.repositories.session_repository import SessionRepository
+from app.domain.repositories.uow import IUnitOfWork
 from app.domain.services.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -27,14 +27,15 @@ class BaseAgent(ABC):
     def __init__(
         self,
         session_id: str,                        # 会话 ID
-        session_repository: SessionRepository,  # 会话仓库
+        uow_factory: Callable[[], IUnitOfWork], # 工作单元工厂
         agent_config: AgentConfig,              # Agent 配置
         llm: LLM,                               # 语言模型协议
         json_parser: JsonParser,                # JSON 输出解析器
         tools: List[BaseTool],                  # 工具列表
     ) -> None:
         self._session_id = session_id
-        self._session_repository = session_repository
+        self._uow_factory = uow_factory
+        self._uow = uow_factory()
         self._agent_config = agent_config
         self._llm = llm
         self._json_parser = json_parser
@@ -44,7 +45,8 @@ class BaseAgent(ABC):
     async def _ensure_memory(self) -> None:
         """确保 Agent 记忆存在"""
         if self._memory is None:
-            self._memory = await self._session_repository.get_memory(self._session_id, self.name)
+            async with self._uow:
+                self._memory = await self._uow.session.get_memory(self._session_id, self.name)
 
     def _get_available_tools(self) -> List[Dict[str, Any]]:
         """获取 Agent 所有可用的工具列表参数声明"""
@@ -133,13 +135,15 @@ class BaseAgent(ABC):
             })
         self._memory.add_messages(messages)
 
-        await self._session_repository.save_memory(self._session_id, self.name, self._memory)
+        async with self._uow:
+            await self._uow.session.save_memory(self._session_id, self.name, self._memory)
     
     async def compact_memory(self) -> None:
         """压缩记忆"""
         await self._ensure_memory()
         self._memory.compact()
-        await self._session_repository.save_memory(self._session_id, self.name, self._memory)
+        async with self._uow:
+            await self._uow.session.save_memory(self._session_id, self.name, self._memory)
 
     async def roll_back(self, message: Message) -> None:
         """Agent 状态回滚，该函数用于确保 Agent 消息列表状态是正确的，用于发送新消息、停止任务、通知用户"""
@@ -173,7 +177,8 @@ class BaseAgent(ABC):
             # 5. 否则直接删除最后一条消息
             self._memory.roll_back()
 
-        await self._session_repository.save_memory(self._session_id, self.name, self._memory)
+        async with self._uow:
+            await self._uow.session.save_memory(self._session_id, self.name, self._memory)
 
     async def invoke(self, query: str, format: Optional[str] = None) -> AsyncGenerator[Event, None]:
         """传递消息+响应格式调用程序生成异步迭代内容"""
@@ -197,7 +202,7 @@ class BaseAgent(ABC):
                 function_args = await self._json_parser.invoke(tool_call["function"]["arguments"])
                 tool = self._get_tool(function_name)
 
-                # 返回工具即将调用事件，TODO: tool_content 还没写
+                # 返回工具即将调用事件
                 yield ToolEvent(
                     tool_call_id=tool_call_id,
                     tool_name=tool.name,

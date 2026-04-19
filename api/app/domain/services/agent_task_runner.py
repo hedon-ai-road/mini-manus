@@ -1,7 +1,7 @@
 import logging
 import asyncio
 import io
-from typing import AsyncGenerator, BinaryIO, List
+from typing import AsyncGenerator, BinaryIO, Callable, List
 import uuid
 from fastapi import UploadFile
 from pydantic import TypeAdapter
@@ -19,8 +19,7 @@ from app.domain.models.event import A2AToolContent, BaseEvent, BrowserToolConten
 from app.domain.models.file import File
 from app.domain.models.message import Message
 from app.domain.models.session import SessionStatus
-from app.domain.repositories.session_repository import SessionRepository
-from app.domain.repositories.file_repository import FileRepository
+from app.domain.repositories.uow import IUnitOfWork
 from app.domain.services.flows.planner_react import PlannerReActFlow
 from app.domain.services.tools.a2a import A2ATool
 from app.domain.services.tools.mcp import MCPTool
@@ -40,27 +39,26 @@ class AgentTaskRunner(TaskRunner):
         mcp_config: MCPConfig, # MCP 配置
         a2a_config: A2AConfig, # A2A 配置
         session_id: str, # 会话 ID
-        session_repository: SessionRepository, # 会话仓库
+        uow_factory: Callable[[], IUnitOfWork],
         file_storage: FileStorage, # 文件存储
-        file_repository: FileRepository, # 文件仓库
         json_parser: JsonParser, # JSON 输出解析器
         browser: Browser, # 浏览器
         sandbox: Sandbox, # 沙箱
         search_engine: SearchEngine, # 搜索引擎
     ) -> None:
         self._session_id = session_id
-        self._session_repository = session_repository
+        self._uow_factory = uow_factory
+        self._uow = uow_factory()
         self._mcp_config = mcp_config
         self._mcp_tool = MCPTool()
         self._a2a_config = a2a_config
         self._a2a_tool = A2ATool()
         self._file_storage = file_storage
-        self._file_repository = file_repository
         self._browser = browser
         self._sandbox = sandbox
         self._flow = PlannerReActFlow(
             session_id=session_id,
-            session_repository=session_repository,
+            uow_factory=uow_factory,
             llm=llm,
             agent_config=agent_config,
             json_parser=json_parser,
@@ -107,32 +105,38 @@ class AgentTaskRunner(TaskRunner):
                     # 根据不同的事件类型进行特殊处理
                     if isinstance(event, TitleEvent):
                         # 如果事件类型为标题事件则更新会话标题
-                        await self._session_repository.update_title(self._session_id, event.title)
+                        async with self._uow:
+                            await self._uow.session.update_title(self._session_id, event.title)
                     elif isinstance(event, MessageEvent):
                         # 如果是消息事件，则更新最新消息并新增未读消息数
-                        await self._session_repository.update_latest_message(self._session_id, event.message, datetime.now())
-                        await self._session_repository.increment_unread_message_count(self._session_id)
+                        async with self._uow:
+                            await self._uow.session.update_latest_message(self._session_id, event.message, datetime.now())
+                            await self._uow.session.increment_unread_message_count(self._session_id)
                     elif isinstance(event, WaitEvent):
                         # 如果是等待事件，则更新会话状态并终止流程
-                        self._session_repository.update_status(self._session_id, SessionStatus.WAITING)
+                        async with self._uow:
+                            await self._uow.session.update_status(self._session_id, SessionStatus.WAITING)
                         return
                     
                     if not await task.input_stream.is_empty():
                         break
             
             # 更新会话状态为已完成
-            await self._session_repository.update_status(self._session_id, SessionStatus.COMPLETED)
+            async with self._uow:
+                await self._uow.session.update_status(self._session_id, SessionStatus.COMPLETED)
         except asyncio.CancelledError:
             # 异步任务被取消，推送结束事件并更新状态
             logger.info(f"AgentTaskRunner 任务[{task.id}]被取消")
             await self._put_and_add_event(task, DoneEvent())
-            await self._session_repository.update_status(self._session_id, SessionStatus.COMPLETED)
+            async with self._uow:
+                await self._uow.session.update_status(self._session_id, SessionStatus.COMPLETED)
             raise
         except Exception as e:
             logger.exception(f"AgentTaskRunner 任务[{task.id}]运行出错: {str(e)}")
             # 往任务消息队列写入异常数据并更新会话状态
             await self._put_and_add_event(task, ErrorEvent(error=f"AgentTaskRunner 运行出错: {str(e)}"))
-            await self._session_repository.update_status(self._session_id, SessionStatus.COMPLETED)
+            async with self._uow:
+                await self._uow.session.update_status(self._session_id, SessionStatus.COMPLETED)
         finally:
             """
             在同一个 asyncio Task 上下文中清理 MCP/A2A 工具资源，
@@ -174,7 +178,8 @@ class AgentTaskRunner(TaskRunner):
         """往指定任务的消息队列写入事件数据并更新会话状态"""
         event_id = await task.output_stream.put(event.model_dump_json())
         event.id = event_id
-        await self._session_repository.add_event(self._session_id, event)
+        async with self._uow:
+            await self._uow.session.add_event(self._session_id, event)
 
     async def _pop_event(self, task: Task) -> Event:
         """从指定任务的消息队列中弹出事件数据"""
@@ -196,7 +201,8 @@ class AgentTaskRunner(TaskRunner):
                     file = await self._sync_file_to_sandbox(attachment.id)
                     if file:
                         attachments.append(file)
-                        await self._session_repository.add_file(self._session_id, file)
+                        async with self._uow:
+                            await self._uow.session.add_file(self._session_id, file)
         
             event.attachments = attachments
         except Exception as e:
@@ -223,7 +229,8 @@ class AgentTaskRunner(TaskRunner):
 
             if tool_result.success:
                 file.filepath = filepath
-                self._file_repository.save(file)
+                async with self._uow:
+                    await self._uow.file.save(file)
                 return file
             else:
                 logger.warning(f"AgentTaskRunner 同步文件 [{file_id}] 到沙箱失败: {tool_result.message}")
@@ -348,14 +355,16 @@ class AgentTaskRunner(TaskRunner):
         """将指定文件同步到存储中"""
         try:
             # 根据文件路径从会话中查找文件
-            file = await self._session_repository.get_file_by_path(filepath=filepath)
+            async with self._uow:
+                file = await self._uow.session.get_file_by_path(filepath=filepath)
             
             # 从沙箱中下载文件
             file_data = await self._sandbox.download_file(filepath)
             
             # 如果会话中存在文件，则删除
             if file:
-                await self._session_repository.remove_file(self._session_id, file.id)
+                async with self._uow:
+                    await self._uow.session.remove_file(self._session_id, file.id)
 
             # 提取文件名字、文件信息并更新文件路径
             filename = filepath.split("/")[-1]
@@ -370,7 +379,8 @@ class AgentTaskRunner(TaskRunner):
             file.filepath = filepath
 
             # 往会话中添加一个文件信息
-            await self._session_repository.add_file(self._session_id, file)
+            async with self._uow:
+                await self._uow.session.add_file(self._session_id, file)
             return file
         except Exception as e:
             logger.exception(f"AgentTaskRunner 同步文件 [{filepath}] 到存储失败: {str(e)}")

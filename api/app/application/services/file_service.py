@@ -1,9 +1,9 @@
-from typing import BinaryIO, Tuple
+from typing import BinaryIO, Callable, Tuple
 from fastapi import UploadFile
 
 from app.domain.external.file_storage import FileStorage
-from app. domain.models.file import File
-from app.domain.repositories.file_repository import FileRepository
+from app.domain.models.file import File
+from app.domain.repositories.uow import IUnitOfWork
 
 
 class FileService:
@@ -11,11 +11,11 @@ class FileService:
 
     def __init__(
         self,
+        uow_factory: Callable[[], IUnitOfWork],
         file_storage: FileStorage,
-        file_repository: FileRepository,
     ) -> None:
         self.file_storage = file_storage
-        self.file_repository = file_repository
+        self._uow_factory = uow_factory
 
     async def upload_file(self, upload_file: UploadFile) -> File:
         """将传递的文件上传到 oss 并记录上传数据"""
@@ -23,7 +23,8 @@ class FileService:
 
     async def get_file_info(self, file_id: str) -> File:
         """根据文件 ID 获取文件信息"""
-        file = await self.file_repository.get_by_id(file_id=file_id)
+        async with self._uow_factory() as uow:
+            file = await uow.file.get_by_id(file_id=file_id)
         if not file:
             raise FileNotFoundError(f"文件[{file_id}]不存在")
         return file

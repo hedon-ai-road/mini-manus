@@ -8,7 +8,6 @@ from pydantic import TypeAdapter
 from app.domain.external.task import Task
 from app.domain.models.event import BaseEvent, DoneEvent, ErrorEvent, Event, MessageEvent, WaitEvent
 from app.domain.models.session import Session, SessionStatus
-from app.domain.repositories.session_repository import SessionRepository
 from app.application.errors.exceptions import NotFoundError
 from app.domain.external.sandbox import Sandbox
 from app.domain.services.agent_task_runner import AgentTaskRunner
@@ -17,15 +16,14 @@ from app.domain.external.json_parser import JsonParser
 from app.domain.external.llm import LLM
 from app.domain.external.search import SearchEngine
 from app.domain.models.app_config import A2AConfig, AgentConfig, MCPConfig
-from app.domain.repositories.file_repository import FileRepository
+from app.domain.repositories.uow import IUnitOfWork
 
 logger = logging.getLogger(__name__)
 
 class AgentService:
     def __init__(
         self,
-        session_repository: SessionRepository,
-        file_repository: FileRepository,
+        uow_factory: Callable[[], IUnitOfWork],
         file_storage: FileStorage,
         json_parser: JsonParser,
         search_engine: SearchEngine,
@@ -36,8 +34,7 @@ class AgentService:
         sandbox_cls: Type[Sandbox],
         task_cls: Type[Task],
     ) -> None:
-        self._session_repository = session_repository
-        self._file_repository = file_repository
+        self._uow_factory = uow_factory
         self._file_storage = file_storage
         self._json_parser = json_parser
         self._search_engine = search_engine
@@ -60,7 +57,8 @@ class AgentService:
         """根据传递的信息调用Agent服务发起对话请求"""
         try:
             # 检查会话是否存在
-            session = await self._session_repository.get_by_id(session_id)
+            async with self._uow_factory() as uow:
+                session = await uow.session.get_by_id(session_id)
             if not session:
                 logger.error(f"尝试与不存在的任务会话[{session_id}]对话")
                 raise NotFoundError("任务会话不存在, 请核实后重试")
@@ -78,16 +76,18 @@ class AgentService:
                         raise RuntimeError(f"会话[{session_id}]创建任务失败")
 
                 # 传递了消息则更新会话中的最后一条消息
-                await self._session_repository.update_latest_message(
-                    session_id=session_id,
-                    message=message,
-                    timestamp=timestamp,
-                )
+                async with self._uow_factory() as uow:
+                    await uow.session.update_latest_message(
+                        session_id=session_id,
+                        message=message,
+                        timestamp=timestamp,
+                    )
 
                 # 从文件数据库中查询数据并更新 attachments 实际内容，并返回人类消息事件
-                db_attachments = [
-                    await self._file_repository.get_by_id(id) for id in (attachments or [])
-                ]
+                async with self._uow_factory() as uow:
+                    db_attachments = [
+                        await uow.file.get_by_id(id) for id in (attachments or [])
+                    ]
 
                 # 创建一个人类消息事件
                 message_event = MessageEvent(
@@ -100,7 +100,8 @@ class AgentService:
                 event_id = await task.input_stream.put(message_event.model_dump_json())
                 message_event.id = event_id
                 yield message_event
-                await self._session_repository.add_event(session_id, message_event)
+                async with self._uow_factory() as uow:
+                    await uow.session.add_event(session_id, message_event)
 
                 # 执行任务
                 await task.invoke()
@@ -127,9 +128,10 @@ class AgentService:
                 logger.debug(f"从会话[{session_id}]中获取事件: {type(event).__name__}")
 
                 # 将未读消息重置为0
-                await self._session_repository.update_unread_message_count(session_id, 0)
+                async with self._uow_factory() as uow:
+                    await uow.session.update_unread_message_count(session_id, 0)
 
-                # 将事件返回并贩毒案事件类型是否为结束类型
+                # 将事件返回并判断事件类型是否为结束类型
                 yield event
                 if isinstance(event, (DoneEvent, ErrorEvent, WaitEvent)):
                     break
@@ -138,7 +140,8 @@ class AgentService:
         except Exception as e:
             logger.error(f"任务会话[{session_id}]聊天请求失败: {str(e)}")
             event = ErrorEvent(error=str(e))
-            await self._session_repository.add_event(session_id, event)
+            async with self._uow_factory() as uow:
+                await uow.session.add_event(session_id, event)
             yield event
 
     async def _get_task(self, session: Session) -> Optional[Task]:
@@ -159,7 +162,8 @@ class AgentService:
         if not sandbox:
             sandbox: Sandbox = await self._sandbox_cls.create()
             session.sandbox_id = sandbox.id
-            await self._session_repository.save(session)
+            async with self._uow_factory() as uow:
+                await uow.session.save(session)
         
         # 获取沙箱中的浏览器实例
         browser = await sandbox.get_browser()
@@ -170,8 +174,7 @@ class AgentService:
         # 创建 AgentTaskRunner
         task_runner = AgentTaskRunner(
             session_id=session.id,
-            session_repository=self._session_repository,
-            file_repository=self._file_repository,
+            uow_factory=self._uow_factory,
             llm=self._llm,
             agent_config=self._agent_config,
             mcp_config=self._mcp_config,
@@ -186,5 +189,6 @@ class AgentService:
         # 创建 task 并更新会话中的信息
         task = self._task_cls.create(task_runner=task_runner)
         session.task_id = task.id
-        await self._session_repository.save(session)
+        async with self._uow_factory() as uow:
+            await uow.session.save(session)
         return task

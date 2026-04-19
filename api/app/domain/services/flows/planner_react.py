@@ -1,15 +1,15 @@
 import logging
 import time
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Callable, Optional
 
 from app.domain.models.app_config import AgentConfig
 from app.domain.models.event import BaseEvent, DoneEvent, MessageEvent, PlanEvent, PlanEventStatus, TitleEvent
 from app.domain.models.plan import ExecutionStatus, Plan
 from app.domain.models.session import SessionStatus
+from app.domain.repositories.uow import IUnitOfWork
 from app.domain.services.flows.base import BaseFlow, FlowStatus
 from app.domain.external.llm import LLM
 from app.domain.models.message import Message
-from app.domain.repositories.session_repository import SessionRepository
 from app.domain.external.json_parser import JsonParser
 from app.domain.external.browser import Browser
 from app.domain.external.sandbox import Sandbox
@@ -32,7 +32,7 @@ class PlannerReActFlow(BaseFlow):
     def __init__(
         self,
         session_id: str, # 会话 ID
-        session_repository: SessionRepository, # 会话仓库
+        uow_factory: Callable[[], IUnitOfWork],
         llm: LLM, # 语言模型
         agent_config: AgentConfig, # Agent 配置
         json_parser: JsonParser, # JSON 输出解析器
@@ -44,7 +44,8 @@ class PlannerReActFlow(BaseFlow):
     ) -> None:
         # 初始化配置数据
         self._session_id = session_id
-        self._session_repository = session_repository
+        self._uow_factory = uow_factory
+        self._uow = uow_factory()
         self.status = FlowStatus.IDLE
         self.plan: Optional[Plan] = None
 
@@ -62,7 +63,7 @@ class PlannerReActFlow(BaseFlow):
         # 创建规划 Agent
         self.planner = PlannerAgent(
             session_id=session_id,
-            session_repository=session_repository,
+            uow_factory=uow_factory,
             agent_config=agent_config,
             llm=llm,
             json_parser=json_parser,
@@ -73,7 +74,7 @@ class PlannerReActFlow(BaseFlow):
         # 创建执行 Agent
         self.react = ReActAgent(
             session_id=session_id,
-            session_repository=session_repository,
+            uow_factory=uow_factory,
             agent_config=agent_config,
             llm=llm,
             json_parser=json_parser,
@@ -84,7 +85,8 @@ class PlannerReActFlow(BaseFlow):
     async def invoke(self, message: Message) -> AsyncGenerator[BaseEvent, None]:
         """流调用函数，返回可迭代的基础事件"""
         # 判断会话是否存在
-        session = await self._session_repository.get_by_id(self._session_id)
+        async with self._uow:
+            session = await self._uow.session.get_by_id(self._session_id)
         if not session:
             raise ValueError(f"会话 {self._session_id} 不存在，请核实后重试！")
 
@@ -108,7 +110,8 @@ class PlannerReActFlow(BaseFlow):
             self.status = FlowStatus.EXECUTING
         
         # 更新会话状态为 RUNNING
-        await self._session_repository.update_status(self._session_id, SessionStatus.RUNNING)
+        async with self._uow:
+            await self._uow.session.update_status(self._session_id, SessionStatus.RUNNING)
 
         # 获取当前会话中最新事件
         self.plan = session.get_latest_plan()

@@ -105,7 +105,7 @@ class DBSessionRepository(SessionRepository):
             update(SessionModel)
             .where(SessionModel.id == session_id)
             .values(
-                unread_message_count=func.max(
+                unread_message_count=func.greatest(
                     func.coalesce(SessionModel.unread_message_count, 0) - 1,
                     0
                 )

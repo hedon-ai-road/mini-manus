@@ -2,7 +2,7 @@ from datetime import datetime
 import io
 import logging
 import os
-from typing import BinaryIO, Tuple
+from typing import BinaryIO, Callable, Tuple
 import uuid
 
 from fastapi import UploadFile
@@ -16,7 +16,7 @@ from alibabacloud_oss_v2.models import (
 
 from app.domain.external.file_storage import FileStorage
 from app.domain.models.file import File
-from app.domain.repositories.file_repository import FileRepository
+from app.domain.repositories.uow import IUnitOfWork
 from app.infrastructure.storage.oss import OSS
 
 logger = logging.getLogger(__name__)
@@ -26,10 +26,10 @@ logger = logging.getLogger(__name__)
 class OSSFileStorage(FileStorage):
     """阿里云 OSS 文件存储"""
 
-    def __init__(self, bucket: str, oss: OSS, repository: FileRepository) -> None:
+    def __init__(self, bucket: str, oss: OSS, uow_factory: Callable[[], IUnitOfWork]) -> None:
         self.bucket = bucket
         self.oss = oss
-        self.repository = repository
+        self._uow_factory = uow_factory
 
     async def upload_file(self, upload_file: UploadFile) -> File:
         """上传文件"""
@@ -67,7 +67,8 @@ class OSSFileStorage(FileStorage):
                 size=upload_file.size,
             )
             try:
-                await self.repository.save(file)
+                async with self._uow_factory() as uow:
+                    await uow.file.save(file)
             except Exception as e:
                 logger.error(f"存储 file [{file.id}] 数据失败，删除 OSS 中的文件[{oss_key}]：{str(e)}")
                 await self.oss.client.delete_object(
@@ -87,7 +88,8 @@ class OSSFileStorage(FileStorage):
         """下载文件"""
         try:
             # 获取文件信息
-            file = await self.repository.get_by_id(file_id)
+            async with self._uow_factory() as uow:
+                file = await uow.file.get_by_id(file_id)
             if not file:
                 raise FileNotFoundError(f"文件[{file_id}]不存在")
 
