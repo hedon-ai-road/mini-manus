@@ -75,9 +75,9 @@ class ReActAgent(BaseAgent):
 
                 # 14. 返回子步骤对应事件
                 yield StepEvent(step=step, status=StepEventStatus.FAILED)
-            else:
-                # 15. 其他场景将事件直接返回
-                yield event
+            
+            # 15. 其他场景直接返回事件
+            yield event
         
         # 16.循环迭代完成后代表子步骤已实现，需要更新状态
         step.status = ExecutionStatus.COMPLETED
