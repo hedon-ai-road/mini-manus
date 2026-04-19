@@ -1,12 +1,11 @@
-import asyncio
 import logging
-from datetime import datetime
-from typing import Optional, Dict, AsyncGenerator
+from typing import Optional, Dict
 from fastapi import APIRouter, Depends
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from app.application.services.agent_service import AgentService
 from app.interfaces.schemas import Response
+from app.interfaces.schemas.event import EventMapper
 from app.interfaces.schemas.session import ChatRequest, CreateSessionResponse, ListSessionResponse, ListSessionItem
 from app.interfaces.service_dependencies import get_agent_service, get_session_service
 from app.application.services.session_service import SessionService
@@ -107,5 +106,11 @@ async def chat(
             latest_event_id=request.event_id,
             timestamp=request.timestamp,
         ):
-            yield ServerSentEvent(event=event.type, data=event.model_dump_json())
+            # 将 Agent 事件转换为 SSE 数据
+            sse_event = EventMapper.event_to_sse_event(event)
+            if sse_event:
+                yield ServerSentEvent(
+                    event=sse_event.event,
+                    data=sse_event.data.model_dump_json(),
+                )
     return EventSourceResponse(event_generator())
