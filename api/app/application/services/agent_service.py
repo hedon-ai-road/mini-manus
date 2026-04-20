@@ -140,9 +140,32 @@ class AgentService:
         except Exception as e:
             logger.error(f"任务会话[{session_id}]聊天请求失败: {str(e)}")
             event = ErrorEvent(error=str(e))
-            async with self._uow_factory() as uow:
-                await uow.session.add_event(session_id, event)
+            try:
+                async with self._uow_factory() as uow:
+                    await uow.session.add_event(session_id, event)
+            except (asyncio.CancelledError, Exception) as add_err:
+                logger.warning(f"往会话[{session_id}]添加事件失败: {str(add_err)}")
             yield event
+        finally:
+            # 会话完整传递给前端后，表示至少用户肯定收到了这些消息，所以不应该有未读消息数
+            # 注意：当SSE客户端断开连接时，sse_starlette使用anyio cancel scope取消当前Task中
+            # 所有的await操作（asyncio.shield也无法对抗anyio的cancel scope）。
+            # 如果在finally块中直接执行数据库操作，该操作会被立即取消，并且SQLAlchemy在尝试
+            # 终止被中断的连接时也会被取消，从而产生ERROR日志并可能污染连接池。
+            # 解决方案：将数据库更新操作放到独立的asyncio Task中执行，新Task不受当前
+            # cancel scope的影响，可以正常完成数据库操作。
+            try:
+                asyncio.create_task(self._safe_update_unread_count(session_id))
+            except RuntimeError:
+                logger.warning(f"会话[{session_id}]无法创建后台任务更新未读消息计数")
+
+    async def _safe_update_unread_count(self, session_id: str) -> None:
+        """安全更新会话未读消息计数"""
+        try:
+            async with self._uow_factory() as uow:
+                await uow.session.update_unread_message_count(session_id, 0)
+        except Exception as e:
+            logger.warning(f"更新会话[{session_id}]未读消息计数失败: {str(e)}")
 
     async def _get_task(self, session: Session) -> Optional[Task]:
         """根据传递的会话获取对应的任务"""
@@ -211,3 +234,14 @@ class AgentService:
         # 更新会话状态
         async with self._uow_factory() as uow:
             await uow.session.update_status(session_id, SessionStatus.COMPLETED)
+
+    async def shutdown(self) -> None:
+        """关闭 Agent 服务"""
+        logger.info("AgentService 开始关闭...")
+        if self._sandbox_cls:
+            await self._sandbox_cls.destroy()
+            logger.info("AgentService 关闭沙箱完成...")
+        if self._task_cls:
+            await self._task_cls.destory()
+            logger.info("AgentService 关闭任务完成...")
+        logger.info("AgentService 关闭完成...")

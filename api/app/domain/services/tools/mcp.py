@@ -242,14 +242,24 @@ class MCPClientManager:
 
     async def cleanup(self) -> None:
         """当退出 MCP 服务时，清除对应资源"""
+        if not self._initialized:
+            return
+
         try:
             await self._exit_stack.aclose()
+            logger.info(f"清除 MCP 上下文管理器成功")
+        except RuntimeError as e:
+            if "Attempted to exit cancel scope in a different task" in str(e):
+                logger.warning(f"清理MCP客户端管理器时遇到任务上下文切换警告（可忽略）: {str(e)}")
+            else:
+                logger.error(f"清理MCP客户端管理器失败: {str(e)}")
+        except Exception as e:
+            logger.error(f"清理 MCP 客户端管理器失败: {str(e)}")
+        finally:
             self._clients.clear()
             self._tools.clear()
             self._initialized = False
             logger.info(f"清除 MCP 客户端管理器成功")
-        except Exception as e:
-            logger.error(f"清理 MCP 客户端管理器失败: {str(e)}")
 
 class MCPTool(BaseTool):
     """MCP 工具包，包含所有已配置 + 已启动的 MCP 工具"""

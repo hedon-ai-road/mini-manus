@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +10,7 @@ from app.infrastructure.storage.posgres import get_postgres
 from app.infrastructure.storage.oss import get_oss
 from app.interfaces.endpoints.routes import router
 from app.interfaces.errors.exception_handlers import register_exeception_handlers
+from app.interfaces.service_dependencies import get_agent_service
 from core.config import get_settings
 
 
@@ -46,10 +48,20 @@ async def liftspan(app: FastAPI):
         # lifespan 节点/分界
         yield
     finally:
-        logger.info("MiniManus 开始关闭...")
+        try:
+            # 等待 agent service 关闭
+            logger.info("MiniManus 开始关闭...")
+            await asyncio.wait_for(get_agent_service().shutdown(), timeout=30.0)
+        except asyncio.TimeoutError:
+            logger.warning("MiniManus 关闭超时，强制关闭，部分任务将被淘汰...")
+        except Exception as e:
+            logger.error(f"MiniManus 关闭发生错误: {str(e)}")
+
+        # 关闭其他应用
         await get_redis().shutdown()
         await get_postgres().shutdown()
         await get_oss().shutdown()
+        
         logger.info("MiniManus 关闭完成...")
 
 # 启动 fastapi

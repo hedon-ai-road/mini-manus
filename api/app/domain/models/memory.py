@@ -32,10 +32,16 @@ class Memory(BaseModel):
     def compact(self) -> None:
         """记忆压缩，将记忆中已经执行的工具(搜索/网页源码获取/浏览器访问结果)这类已经执行过的消息进行压缩简化"""
         for message in self.messages:
+            # 压缩工具消息
             if self.get_message_role(message) == "tool":
                 if message.get("function_name") in ["browser_view", "browser_navigate"]:
                     message["content"] = "(REMOVED)"
                     logger.debug(f"从记忆中移除对应工具的结果: {message['function_name']}")
+
+            # 压缩思维链消息
+            if "reasoning_content" in message:
+                logger.debug(f"从记忆中移除对应思维链的消息: {message['reasoning_content'][:30]}...")
+                del message["reasoning_content"]
 
     @property
     def empty(self) -> bool:

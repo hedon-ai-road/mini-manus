@@ -219,7 +219,7 @@ class AgentTaskRunner(TaskRunner):
                 logger.warning(f"AgentTaskRunner 获取文件 [{file_id}] 信息失败")
                 return None
             
-            filepath = f"/home/ubutun/upload/{file.filename}"
+            filepath = f"/home/ubuntu/upload/{file.filename}"
             
             tool_result = await self._sandbox.upload_file(
                 file_data=file_data,
