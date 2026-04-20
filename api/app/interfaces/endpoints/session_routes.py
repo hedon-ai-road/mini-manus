@@ -1,7 +1,9 @@
 import asyncio
 import logging
+import websockets
+from websockets import ConnectionClosed
 from typing import AsyncGenerator, Optional, Dict
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from app.application.errors.exceptions import NotFoundError
@@ -256,3 +258,82 @@ async def read_shell_output(
         msg="获取Shell内容输出结果成功",
         data=result,
     )
+
+@router.websocket(
+    path="/{session_id}/vnc",
+)
+async def vnc_websocket(
+    websocket: WebSocket,
+    session_id: str,
+    session_service: SessionService = Depends(get_session_service),
+) -> None:
+    """VNC Websocket端点，用于建立与沙箱环境的vnc连接，并双向转发数据"""
+    # 从客户端 noVNC 接收子协议
+    protocols_str = websocket.headers.get("sec-websocket-protocol", "")
+    protocols = [p.strip() for p in protocols_str.split(",") if p.strip()]
+
+    # 判断使用不同协议（noVNC 首选 binary）
+    # 若客户端未携带任何子协议，selected_protocol 置 None：
+    # 按 RFC 6455，服务端不能在客户端未提供协议时在响应中返回协议，否则浏览器会立即关闭连接
+    if "binary" in protocols:
+        selected_protocol = "binary"
+    elif "base64" in protocols:
+        selected_protocol = "base64"
+    else:
+        logger.warning(f"{session_id} VNC Websocket端点连接未指定协议[{protocols_str}]，不协商子协议")
+        selected_protocol = None
+
+    try:
+        # 先建立与沙箱 VNC 的连接，再 accept 客户端 WebSocket
+        # 这样 noVNC accept 后可立即收到 RFB 握手数据，避免因延迟超时断开
+        sandbox_vnc_url = await session_service.get_vnc_url(session_id)
+        logger.info(f"获取到会话[{session_id}]的vnc连接url: {sandbox_vnc_url}")
+
+        # 子协议与客户端协商结果保持一致
+        vnc_subprotocols = [selected_protocol] if selected_protocol else []
+        async with websockets.connect(sandbox_vnc_url, subprotocols=vnc_subprotocols) as sandbox_ws:
+            # 沙箱 VNC 就绪后再向客户端完成 WebSocket 握手
+            logger.info(f"{session_id} VNC Websocket端点连接已建立，使用协议: {selected_protocol}")
+            await websocket.accept(subprotocol=selected_protocol)
+            # 创建 2 个异步协程完成数据的双向转发
+            async def forward_to_sandbox():
+                try:
+                    while True:
+                        data = await websocket.receive_bytes()
+                        await sandbox_ws.send(data)
+                except WebSocketDisconnect:
+                    logger.info(f"{session_id} Web->VNC 数据转发中断")
+                except Exception as forward_e:
+                    logger.error(f"{session_id} Web->VNC 数据转发异常: {str(forward_e)}")
+
+            async def forward_from_sandbox():
+                try:
+                    while True:
+                        data = await sandbox_ws.recv()
+                        await websocket.send_bytes(data)
+                except ConnectionClosed:
+                    logger.info(f"{session_id} VNC->Web 数据转发中断")
+                except Exception as forward_e:
+                    logger.error(f"{session_id} VNC->Web 数据转发异常: {str(forward_e)}")
+
+            # 并行运行两个子恩物
+            forward_task1 = asyncio.create_task(forward_to_sandbox())
+            forward_task2 = asyncio.create_task(forward_from_sandbox())
+
+            # 等待任意任何结束
+            done, pending = await asyncio.wait(
+                [forward_task1, forward_task2],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            logger.info(f"{session_id} VNC Websocket端点连接已关闭")
+
+            # 取消未完成的任务
+            for task in pending:
+                task.cancel()
+    except ConnectionError as connection_e:
+        # 连接沙箱环境失败，关闭websocket
+        logger.error(f"连接沙箱环境失败: {str(connection_e)}")
+        await websocket.close(code=1011, reason=f"连接沙箱环境失败: {str(connection_e)}")
+    except Exception as e:
+        logger.error(f"VNC Websocket端点出现异常: {str(e)}")
+        await websocket.close(code=1011, reason=f"VNC Websocket端点出现异常: {str(e)}")

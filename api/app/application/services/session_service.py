@@ -118,3 +118,26 @@ class SessionService:
         if result.success:
             return ShellReadResponse(**result.data)
         raise ServerError(msg=f"读取shell内容输出失败: {result.message}")
+
+    async def get_vnc_url(self, session_id: str) -> str:
+        """获取指定会话的vnc连接url"""
+        logger.info(f"获取指定会话[{session_id}]的vnc连接url")
+
+        # 检查会话是否存在
+        async with self._uow_factory() as uow:
+            session = await uow.session.get_by_id(session_id)
+        if not session:
+            logger.error(f"会话[{session_id}]不存在, 获取vnc连接url失败")
+            raise NotFoundError(f"会话[{session_id}]不存在, 获取vnc连接url失败")
+
+        # 判断沙箱是否存在
+        if not session.sandbox_id:
+            logger.error(f"会话[{session_id}]不存在沙箱, 获取vnc连接url失败")
+            raise NotFoundError(f"会话[{session_id}]不存在沙箱, 获取vnc连接url失败")
+        sandbox = await self._sandbox_cls.get(session.sandbox_id)
+        if not sandbox:
+            logger.error(f"沙箱[{session.sandbox_id}]不存在, 获取vnc连接url失败")
+            raise NotFoundError(f"沙箱[{session.sandbox_id}]不存在, 获取vnc连接url失败")
+
+        # 获取vnc连接url
+        return sandbox.vnc_url
