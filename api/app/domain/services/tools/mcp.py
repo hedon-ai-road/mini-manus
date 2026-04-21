@@ -20,7 +20,8 @@ MCP客户端管理器的开发思路:
     初始化标识等, 从而避免资源泄露;
 """
 
-from contextlib import AbstractAsyncContextManager, AsyncExitStack
+import asyncio
+from contextlib import AsyncExitStack
 import logging
 import os
 from typing import Any, Dict, List, Optional
@@ -35,6 +36,10 @@ from app.domain.models.tool_result import ToolResult
 from app.application.errors.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
+
+# MCP 操作超时配置（秒）
+MCP_CONNECT_TIMEOUT = 30   # 连接 + initialize + list_tools
+MCP_CALL_TIMEOUT = 120     # 单次工具调用
 
 class MCPClientManager:
     """MCP 客户端管理器"""
@@ -91,8 +96,8 @@ class MCPClientManager:
 
     async def _connect_stdio_server(self, server_name: str, server_config: MCPServerConfig) -> None:
         command = server_config.command
-        args = server_config.args
-        env = server_config.env
+        args = server_config.args or []
+        env = server_config.env or {}
 
         if not command:
             raise ValueError(f"连接 stdio-mcp 服务器需要配置 command 命令")
@@ -104,11 +109,19 @@ class MCPClientManager:
         )
 
         try:
-            cm = AbstractAsyncContextManager(ClientSession(server_parameters))
-            session = await self._new_session(server_name, cm)
-            await self._cache_mcp_server_tools(server_name, session)
-            
+            cm = stdio_client(server_parameters)
+            session = await asyncio.wait_for(
+                self._new_session(server_name, cm),
+                timeout=MCP_CONNECT_TIMEOUT,
+            )
+            await asyncio.wait_for(
+                self._cache_mcp_server_tools(server_name, session),
+                timeout=MCP_CONNECT_TIMEOUT,
+            )
             logger.info(f"连接 stdio_mcp 服务成功: {server_name}")
+        except asyncio.TimeoutError:
+            logger.error(f"连接 stdio-mcp 服务器超时: {server_name}")
+            raise
         except Exception as e:
             logger.error(f"连接 stdio-mcp 服务器失败: {str(e)}")
             raise
@@ -119,11 +132,23 @@ class MCPClientManager:
             raise ValueError(f"连接 sse-mcp 服务器需要配置 url")
 
         try:
-            cm = sse_client(url=url, headers=server_config.headers)
-            session = await self._new_session(server_name, cm)
-            await self._cache_mcp_server_tools(server_name, session)
-            
+            cm = sse_client(
+                url=url,
+                headers=server_config.headers or {},
+                timeout=MCP_CONNECT_TIMEOUT,
+            )
+            session = await asyncio.wait_for(
+                self._new_session(server_name, cm),
+                timeout=MCP_CONNECT_TIMEOUT,
+            )
+            await asyncio.wait_for(
+                self._cache_mcp_server_tools(server_name, session),
+                timeout=MCP_CONNECT_TIMEOUT,
+            )
             logger.info(f"连接 sse-mcp 服务成功: {server_name}")
+        except asyncio.TimeoutError:
+            logger.error(f"连接 sse-mcp 服务器超时: {server_name}")
+            raise
         except Exception as e:
             logger.error(f"连接 sse-mcp 服务器失败: {str(e)}")
             raise
@@ -134,14 +159,28 @@ class MCPClientManager:
             raise ValueError(f"连接 streamable-htt-mcp 服务器需要配置 url")
 
         try:
-            cm = streamable_http_client(
-                url=url,
-                http_client=httpx.AsyncClient(headers=server_config.headers)
+            http_client = httpx.AsyncClient(
+                headers=server_config.headers or {},
+                timeout=httpx.Timeout(
+                    connect=MCP_CONNECT_TIMEOUT,
+                    read=MCP_CALL_TIMEOUT,
+                    write=MCP_CONNECT_TIMEOUT,
+                    pool=MCP_CONNECT_TIMEOUT,
+                ),
             )
-            session = await self._new_session(server_name, cm)
-            await self._cache_mcp_server_tools(server_name, session)
-            
+            cm = streamable_http_client(url=url, http_client=http_client)
+            session = await asyncio.wait_for(
+                self._new_session(server_name, cm),
+                timeout=MCP_CONNECT_TIMEOUT,
+            )
+            await asyncio.wait_for(
+                self._cache_mcp_server_tools(server_name, session),
+                timeout=MCP_CONNECT_TIMEOUT,
+            )
             logger.info(f"连接 streamable-htt-mcp 服务成功: {server_name}")
+        except asyncio.TimeoutError:
+            logger.error(f"连接 streamable-http-mcp 服务器超时: {server_name}")
+            raise
         except Exception as e:
             logger.error(f"连接 streamable-htt-mcp 服务器失败: {str(e)}")
             raise
@@ -219,7 +258,10 @@ class MCPClientManager:
             if not session:
                 return ToolResult(success=False, message=f"MCP 服务器 [{original_server_name}] 未连接")
             
-            result = await session.call_tool(original_tool_name, arguments)
+            result = await asyncio.wait_for(
+                session.call_tool(original_tool_name, arguments),
+                timeout=MCP_CALL_TIMEOUT,
+            )
             if result:
                 content = []
                 if hasattr(result, "content") and result.content:
@@ -233,6 +275,12 @@ class MCPClientManager:
             else:
                 return ToolResult(success=True, message="工具执行成功")
 
+        except asyncio.TimeoutError:
+            logger.error(f"调用 MCP 工具 [{tool_name}] 超时（>{MCP_CALL_TIMEOUT}s）")
+            return ToolResult(
+                success=False,
+                message=f"调用 MCP 工具 [{tool_name}] 超时，请稍后重试"
+            )
         except Exception as e:
             logger.error(f"调用 MCP 工具 [{tool_name}] 失败: {str(e)}")
             return ToolResult(
