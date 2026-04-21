@@ -123,6 +123,9 @@ class BaseAgent(ABC):
 
         tools_override: 若传入，则使用该列表代替 self._get_available_tools()。
                         传入空列表 [] 可强制禁用工具，使 response_format 生效（如 summarize 场景）。
+
+        若所有重试均失败，最终 yield {"type": "llm_error", "message": <具体原因>}，
+        调用方应检查此标记并向前端传递详细错误。
         """
         await self._add_to_memory(messages)
         available_tools = self._get_available_tools() if tools_override is None else tools_override
@@ -130,7 +133,8 @@ class BaseAgent(ABC):
         # 仅在无 tools 时才传 response_format，有 tools 时让 LLM 自行决定回复方式
         response_format = {"type": format} if (format and not available_tools) else None
 
-        for _ in range(self._agent_config.max_retries):
+        last_error = "未知错误"
+        for attempt in range(self._agent_config.max_retries):
             try:
                 message: Optional[Dict[str, Any]] = None
                 has_thinking = False
@@ -148,12 +152,14 @@ class BaseAgent(ABC):
                         message = chunk["message"]
 
                 if message is None:
-                    logger.warning("LLM 流式调用未返回 result，执行重试")
+                    last_error = f"第 {attempt + 1} 次调用：LLM 流式返回无 result 块"
+                    logger.warning(last_error)
                     await asyncio.sleep(self._retry_interval)
                     continue
 
                 if not message.get("content") and not message.get("tool_calls"):
-                    logger.warning("LLM 流式回复了空内容，执行重试")
+                    last_error = f"第 {attempt + 1} 次调用：LLM 返回了空内容（content 和 tool_calls 均为空）"
+                    logger.warning(last_error)
                     await self._add_to_memory([
                         {"role": "assistant", "content": ""},
                         {"role": "user", "content": "AI 无响应内容，请继续。"}
@@ -174,9 +180,14 @@ class BaseAgent(ABC):
                 yield filtered_message
                 return
             except Exception as e:
-                logger.error(f"流式调用语言模型发生错误: {str(e)}")
+                last_error = f"第 {attempt + 1} 次调用异常：{type(e).__name__}: {str(e)}"
+                logger.error(f"流式调用语言模型发生错误: {last_error}")
                 await asyncio.sleep(self._retry_interval)
                 continue
+
+        # 所有重试均失败，向调用方传递详细原因
+        logger.error(f"LLM 流式调用已重试 {self._agent_config.max_retries} 次，全部失败，最后一次原因: {last_error}")
+        yield {"type": "llm_error", "message": f"LLM 调用失败（已重试 {self._agent_config.max_retries} 次），最后错误：{last_error}"}
 
     async def _invoke_tool(self, tool: BaseTool, tool_name: str, arguments: Dict[str, Any]) -> ToolResult:
         """调用工具"""
@@ -260,6 +271,9 @@ class BaseAgent(ABC):
         ):
             if isinstance(item, ThinkingEvent):
                 yield item
+            elif isinstance(item, dict) and item.get("type") == "llm_error":
+                yield ErrorEvent(error=item["message"])
+                return
             else:
                 message = item
 
@@ -325,6 +339,9 @@ class BaseAgent(ABC):
             async for item in self._stream_invoke_llm(tool_messages):
                 if isinstance(item, ThinkingEvent):
                     yield item
+                elif isinstance(item, dict) and item.get("type") == "llm_error":
+                    yield ErrorEvent(error=item["message"])
+                    return
                 else:
                     message = item
 

@@ -96,6 +96,9 @@ class ReActAgent(BaseAgent):
         ):
             if isinstance(item, ThinkingEvent):
                 yield item
+            elif isinstance(item, dict) and item.get("type") == "llm_error":
+                yield ErrorEvent(error=item["message"])
+                return
             else:
                 message = item
 

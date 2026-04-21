@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import base64
 import io
 from typing import AsyncGenerator, BinaryIO, Callable, List
 import uuid
@@ -9,7 +10,6 @@ from datetime import datetime
 
 from app.domain.models.search import SearchResults
 from app.domain.models.tool_result import ToolResult
-from core.config import get_settings
 from app.domain.external.file_storage import FileStorage
 from app.domain.external.json_parser import JsonParser
 from app.domain.external.llm import LLM
@@ -279,10 +279,13 @@ class AgentTaskRunner(TaskRunner):
             # 如果事件状态为已调用则进行特殊处理
             if event.status == ToolEventStatus.CALLED:
                 if event.tool_name == "browser":
-                    # 工具为浏览器则补全浏览器工具内容
-                    event.tool_content = BrowserToolContent(
-                        screenshot=await self._get_browser_screenshot(),
-                    )
+                    # 工具为浏览器则补全浏览器工具内容（截图以 base64 data URL 内嵌）
+                    try:
+                        event.tool_content = BrowserToolContent(
+                            screenshot=await self._get_browser_screenshot(),
+                        )
+                    except Exception as screenshot_err:
+                        logger.warning(f"浏览器截图失败，跳过: {screenshot_err}")
                 elif event.tool_name == "search":
                     # 工具为搜索则添加搜索内容
                     search_results: ToolResult[SearchResults] = event.function_result
@@ -342,19 +345,10 @@ class AgentTaskRunner(TaskRunner):
             logger.exception(f"AgentTaskRunner 处理工具事件失败: {str(e)}")
 
     async def _get_browser_screenshot(self) -> str:
-        """获取浏览器截图"""
-        # 调用浏览器完成截图
+        """获取浏览器截图，返回 base64 data URL（直接内嵌，无需 OSS）"""
         screenshot = await self._browser.screenshot()
-
-        # 将浏览器截图上传到文件存储中
-        file = await self._file_storage.upload_file(UploadFile(
-            file=io.BytesIO(screenshot),
-            filename=f"{str(uuid.uuid4())}.png",
-            size=self._get_stream_size(io.BytesIO(screenshot)),
-        ))
-
-        settings = get_settings()
-        return f"https://{settings.oss_bucket}.{settings.oss_endpoint}/{file.key}"
+        b64 = base64.b64encode(screenshot).decode("utf-8")
+        return f"data:image/png;base64,{b64}"
 
     async def _sync_message_attachments_to_storage(self, event: MessageEvent) -> None:
         """将消息中的附件同步到存储中
