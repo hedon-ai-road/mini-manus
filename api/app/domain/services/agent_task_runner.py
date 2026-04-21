@@ -71,6 +71,7 @@ class AgentTaskRunner(TaskRunner):
 
     async def invoke(self, task: Task) -> None:
         """根据传递的任务处理 agent 消息队列并运行 agent 流"""
+        session_completed = False
         try:
             # 确保沙箱/MCP/A2A均初始化完成
             await self._sandbox.ensure_sandbox()
@@ -113,7 +114,7 @@ class AgentTaskRunner(TaskRunner):
                             await self._uow.session.update_latest_message(self._session_id, event.message, datetime.now())
                             await self._uow.session.increment_unread_message_count(self._session_id)
                     elif isinstance(event, WaitEvent):
-                        # 如果是等待事件，则更新会话状态并终止流程
+                        # 如果是等待事件，则更新会话状态并终止流程（沙箱保留，等待用户继续）
                         async with self._uow:
                             await self._uow.session.update_status(self._session_id, SessionStatus.WAITING)
                         return
@@ -122,12 +123,14 @@ class AgentTaskRunner(TaskRunner):
                         break
             
             # 更新会话状态为已完成
+            session_completed = True
             async with self._uow:
                 await self._uow.session.update_status(self._session_id, SessionStatus.COMPLETED)
         except asyncio.CancelledError:
             # 异步任务被取消，推送结束事件并更新状态
             logger.info(f"AgentTaskRunner 任务[{task.id}]被取消")
             await self._put_and_add_event(task, DoneEvent())
+            session_completed = True
             async with self._uow:
                 await self._uow.session.update_status(self._session_id, SessionStatus.COMPLETED)
             raise
@@ -135,6 +138,7 @@ class AgentTaskRunner(TaskRunner):
             logger.exception(f"AgentTaskRunner 任务[{task.id}]运行出错: {str(e)}")
             # 往任务消息队列写入异常数据并更新会话状态
             await self._put_and_add_event(task, ErrorEvent(error=f"AgentTaskRunner 运行出错: {str(e)}"))
+            session_completed = True
             async with self._uow:
                 await self._uow.session.update_status(self._session_id, SessionStatus.COMPLETED)
         finally:
@@ -143,6 +147,14 @@ class AgentTaskRunner(TaskRunner):
             确保不会在多个不同的 asyncio Task 上下文中重复清理。
             """
             await self._cleanup_tools()
+            # 会话真正结束时（非 WAITING 中途暂停）主动销毁沙箱容器，
+            # 避免容器因中间件自动续期而长时间存活。
+            if session_completed and self._sandbox:
+                try:
+                    await self._sandbox.destroy()
+                    logger.info(f"AgentTaskRunner 任务完成，沙箱已销毁: {self._session_id}")
+                except Exception as e:
+                    logger.warning(f"AgentTaskRunner 销毁沙箱失败: {str(e)}")
 
     async def destory(self) -> None:
         """销毁任务并释放资源"""

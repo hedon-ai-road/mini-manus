@@ -106,7 +106,7 @@ function ShellPreview({ tool }: { tool: ToolEvent }) {
   return (
     <div className="flex flex-col gap-3 p-4 h-full">
       <div className="flex-1 rounded-lg overflow-hidden border border-gray-700 bg-[#1e1e1e] flex flex-col min-h-0">
-        <div className="text-center text-xs text-gray-400 py-1.5 bg-[#2d2d2d] border-b border-gray-700 flex-shrink-0">
+        <div className="text-center text-xs text-gray-400 py-1.5 bg-[#2d2d2d] border-b border-gray-700 shrink-0">
           {sessionId || 'shell'}
         </div>
         <ScrollArea className="flex-1">
@@ -119,7 +119,7 @@ function ShellPreview({ tool }: { tool: ToolEvent }) {
                   <span className="text-white">{rec.command}</span>
                 </div>
                 {rec.output && (
-                  <pre className="text-gray-300 whitespace-pre-wrap break-words mt-0.5">{rec.output}</pre>
+                  <pre className="text-gray-300 whitespace-pre-wrap wrap-break-word mt-0.5">{rec.output}</pre>
                 )}
               </div>
             )) : (
@@ -140,8 +140,8 @@ function BrowserPreview({ tool, onOpenVNC }: { tool: ToolEvent; onOpenVNC?: () =
   return (
     <div className="flex flex-col gap-3 p-4 h-full">
       {url && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 border text-sm text-gray-600 flex-shrink-0">
-          <Globe size={14} className="text-gray-400 flex-shrink-0" />
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 border text-sm text-gray-600 shrink-0">
+          <Globe size={14} className="text-gray-400 shrink-0" />
           <span className="truncate">{url}</span>
         </div>
       )}
@@ -226,12 +226,12 @@ function FileToolPreview({ tool }: { tool: ToolEvent }) {
     <div className="flex flex-col gap-3 p-4 h-full">
       <div className="flex-1 rounded-lg overflow-hidden border border-gray-700 bg-[#1e1e1e] flex flex-col min-h-0">
         {filepath && (
-          <div className="text-center text-xs text-gray-400 py-1.5 bg-[#2d2d2d] border-b border-gray-700 flex-shrink-0 truncate px-4">
+          <div className="text-center text-xs text-gray-400 py-1.5 bg-[#2d2d2d] border-b border-gray-700 shrink-0 truncate px-4">
             {filepath}
           </div>
         )}
         <ScrollArea className="flex-1">
-          <pre className="p-4 font-mono text-sm text-gray-300 whitespace-pre-wrap break-words leading-relaxed">
+          <pre className="p-4 font-mono text-sm text-gray-300 whitespace-pre-wrap wrap-break-word leading-relaxed">
             {fileContent ?? '等待文件内容...'}
           </pre>
         </ScrollArea>
@@ -255,7 +255,7 @@ function MCPPreview({ tool }: { tool: ToolEvent }) {
             {Object.keys(tool.args).length > 0 && (
               <div className="mt-1">
                 <span className="text-gray-500">参数：</span>
-                <pre className="text-xs text-gray-700 mt-1 whitespace-pre-wrap break-words">
+                <pre className="text-xs text-gray-700 mt-1 whitespace-pre-wrap wrap-break-word">
                   {JSON.stringify(tool.args, null, 2)}
                 </pre>
               </div>
@@ -265,7 +265,7 @@ function MCPPreview({ tool }: { tool: ToolEvent }) {
         <div className="flex flex-col gap-1">
           <div className="text-xs text-gray-500 uppercase tracking-wide">执行结果</div>
           <div className="rounded-lg border border-gray-700 bg-[#1e1e1e] p-4">
-            <pre className="font-mono text-sm text-gray-300 whitespace-pre-wrap break-words">
+            <pre className="font-mono text-sm text-gray-300 whitespace-pre-wrap wrap-break-word">
               {result != null
                 ? (typeof result === 'string' ? result : JSON.stringify(result, null, 2))
                 : '等待执行结果...'}
@@ -297,7 +297,7 @@ function A2APreview({ tool }: { tool: ToolEvent }) {
         <div className="flex flex-col gap-1">
           <div className="text-xs text-gray-500 uppercase tracking-wide">执行结果</div>
           <div className="rounded-lg border border-gray-700 bg-[#1e1e1e] p-4">
-            <pre className="font-mono text-sm text-gray-300 whitespace-pre-wrap break-words">
+            <pre className="font-mono text-sm text-gray-300 whitespace-pre-wrap wrap-break-word">
               {result != null
                 ? (typeof result === 'string' ? result : JSON.stringify(result, null, 2))
                 : '等待执行结果...'}
@@ -319,7 +319,7 @@ function DefaultPreview({ tool }: { tool: ToolEvent }) {
         </div>
         {tool.content != null && (
           <div className="rounded-lg border border-gray-700 bg-[#1e1e1e] p-4">
-            <pre className="font-mono text-sm text-gray-300 whitespace-pre-wrap break-words">
+            <pre className="font-mono text-sm text-gray-300 whitespace-pre-wrap wrap-break-word">
               {typeof tool.content === 'string' ? tool.content : JSON.stringify(tool.content, null, 2)}
             </pre>
           </div>
@@ -347,7 +347,7 @@ export function ToolPreviewPanel({
   return (
     <div className="flex flex-col h-full rounded-xl bg-white shadow-xl overflow-hidden">
       {/* Header */}
-      <div className="flex flex-col gap-2 px-4 py-3 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+      <div className="flex flex-col gap-2 px-4 py-3 border-b border-gray-200 bg-gray-50 shrink-0">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-gray-900">MiniManus 的电脑</h2>
           <Button
@@ -361,18 +361,25 @@ export function ToolPreviewPanel({
           </Button>
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-600">
-          <Monitor size={14} className="text-gray-500 flex-shrink-0" />
+          <Monitor size={14} className="text-gray-500 shrink-0" />
           <span>MiniManus 正在使用</span>
           <span className="font-medium text-gray-800">{toolDesc}</span>
         </div>
         <div className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 border border-gray-200 bg-gray-100 text-gray-700 text-xs w-fit max-w-full">
-          <ToolIcon size={14} className="flex-shrink-0 text-gray-500" />
+          <ToolIcon size={14} className="shrink-0 text-gray-500" />
           <span className="truncate">{label}</span>
         </div>
       </div>
 
       {/* Content with overlaid jump button */}
       <div className="flex-1 overflow-hidden relative">
+        {/* Error banner */}
+        {tool.result != null && !tool.result.success && (
+          <div className="flex items-start gap-2 mx-4 mt-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm shrink-0">
+            <span className="font-medium shrink-0">执行失败：</span>
+            <span className="wrap-break-word">{tool.result.message || '工具执行出现错误'}</span>
+          </div>
+        )}
         {kind === 'bash' && <ShellPreview tool={tool} />}
         {kind === 'browser' && <BrowserPreview tool={tool} onOpenVNC={onOpenVNC} />}
         {kind === 'search' && <SearchPreview tool={tool} />}

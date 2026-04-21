@@ -3,6 +3,7 @@
 export interface MessageToolProps {
   label: string
   onClick?: () => void
+  hasError?: boolean
 }
 
 export function MessageTool({ label }: MessageToolProps) {

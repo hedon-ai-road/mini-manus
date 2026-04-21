@@ -30,7 +30,7 @@ export interface ToolUseProps {
   onClick?: () => void
 }
 
-const TOOL_COMPONENTS: Record<ToolKind, ComponentType<{ label: string; onClick?: () => void }>> = {
+const TOOL_COMPONENTS: Record<ToolKind, ComponentType<{ label: string; onClick?: () => void; hasError?: boolean }>> = {
   message: MessageTool,
   bash: BashTool,
   file: FileTool,
@@ -45,5 +45,6 @@ export function ToolUse({ data, onClick }: ToolUseProps) {
   const label = getFriendlyToolLabel(data)
   const kind = getToolKind(data)
   const Component = TOOL_COMPONENTS[kind]
-  return <Component label={label} onClick={onClick} />
+  const hasError = data?.result != null && !data.result.success
+  return <Component label={label} onClick={onClick} hasError={hasError} />
 }

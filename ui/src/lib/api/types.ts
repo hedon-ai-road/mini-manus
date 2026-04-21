@@ -235,12 +235,18 @@ export type StepEvent = {
 /**
  * 工具调用事件
  */
+export type ToolResult = {
+  success: boolean;
+  message?: string | null;
+};
+
 export type ToolEvent = {
   name: string;
   function: string;
   args: Record<string, unknown>;
   content?: unknown;
   status?: ToolEventStatus;
+  result?: ToolResult | null;
   [key: string]: unknown;
 };
 

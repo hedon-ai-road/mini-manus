@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Literal, Optional, Type, Union, get_args
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.models.event import Event, ToolEventStatus
+from app.domain.models.tool_result import ToolResult as DomainToolResult
 from app.domain.models.file import File
 from app.domain.models.plan import ExecutionStatus
 
@@ -165,6 +166,11 @@ class PlanSSEEvent(BaseSSEEvent):
             )
         )
 
+class ToolResultData(BaseModel):
+    """工具执行结果数据（仅包含 success 和 message，data 不传输到前端）"""
+    success: bool
+    message: Optional[str] = None
+
 class ToolEventData(BaseEventData):
     """工具事件数据"""
     tool_call_id: str # 工具调用ID
@@ -172,7 +178,8 @@ class ToolEventData(BaseEventData):
     status: ToolEventStatus # 工具状态
     function: str # 工具名称
     args: Dict[str, Any] # 工具参数
-    content: Optional[Any] = None # 工具调用结果
+    content: Optional[Any] = None # 工具调用结果（截图/文件内容等富内容）
+    result: Optional[ToolResultData] = None # 工具调用成功/失败状态
 
 class ToolSSEEvent(BaseSSEEvent):
     """工具SSE事件"""
@@ -182,6 +189,12 @@ class ToolSSEEvent(BaseSSEEvent):
     @classmethod
     def from_event(cls, event: Event) -> "ToolSSEEvent":
         """类方法，用于将工具事件Domain模型转换成工具SSE事件模型"""
+        result: Optional[ToolResultData] = None
+        if event.function_result is not None:
+            result = ToolResultData(
+                success=event.function_result.success,
+                message=event.function_result.message,
+            )
         return cls(
             data=ToolEventData(
                 **BaseEventData.base_event_data(event),
@@ -191,6 +204,7 @@ class ToolSSEEvent(BaseSSEEvent):
                 function=event.function_name,
                 args=event.function_args,
                 content=event.tool_content,
+                result=result,
             )
         )
     

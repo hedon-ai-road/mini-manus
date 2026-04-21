@@ -6,8 +6,9 @@ import { ToolBadge } from './tool-badge'
 export interface BrowserToolProps {
   label: string
   onClick?: () => void
+  hasError?: boolean
 }
 
-export function BrowserTool({ label, onClick }: BrowserToolProps) {
-  return <ToolBadge icon={Globe} label={label} onClick={onClick} />
+export function BrowserTool({ label, onClick, hasError }: BrowserToolProps) {
+  return <ToolBadge icon={Globe} label={label} onClick={onClick} hasError={hasError} />
 }

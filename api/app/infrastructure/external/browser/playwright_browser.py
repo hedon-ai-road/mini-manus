@@ -240,7 +240,7 @@ class PlaywrightBrowser(BrowserProtocol):
         try:
             self.page.interactive_elements_cache = []
 
-            await self.page.goto(url)
+            await self.page.goto(url, wait_until="domcontentloaded", timeout=60000)
             return ToolResult(
                 success=True,
                 data={"interactive_elements": await self._extract_interactive_elements()}
