@@ -1,49 +1,74 @@
-import { ChatInput } from "@/components/chat-input"
-import { ChatMessage } from "@/components/chat-message"
-import { PlanPanel } from "@/components/plan-panel"
-import { SessionHeader } from "@/components/session-header"
+'use client'
 
-// 定义页面路由参数
-interface PageProps{
-    params: Promise<{ id: string }>
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { SessionDetailView } from '@/components/session-detail-view'
+
+interface PageProps {
+  params: Promise<{ id: string }>
 }
 
-export default async function Page(
-    {params}: PageProps,
-) {
-    // 从 params 中取出 id
-    const { id } = await params
-    const messgaes = [
-        { id: 1, type: "user" },
-        { id: 2, type: "attachments", role: "user" },
-        { id: 3, type: "assistant" },
-        { id: 4, type: "tool" },
-        { id: 5, type: "step" },
-        { id: 6, type: "assistant" },
-        { id: 7, type: "attachments", role: "assistant" },
-    ]
+/**
+ * 任务详情页：展示会话标题、事件时间线、任务进度与输入框。
+ * - 通过 getSessionDetail 获取任务详情与事件列表（若后端返回 events）
+ * - 未完成任务通过 chat 空 body 流式拉取事件
+ * - 发送消息通过 chat 带 message/attachments 流式追加事件
+ * - 支持从 URL 参数读取初始消息（用于首页跳转场景）
+ */
+export default function SessionDetailPage({ params }: PageProps) {
+  const searchParams = useSearchParams()
+  const [sessionData, setSessionData] = useState<{
+    id: string
+    initialMessage?: string
+    initialAttachments?: string[]
+    hasInitialMessage: boolean
+  } | null>(null)
+  
+  useEffect(() => {
+    params.then(p => {
+      // 尝试从 URL 参数读取初始消息（Base64 编码）
+      const initParam = searchParams.get('init')
+      
+      if (initParam) {
+        try {
+          // 解码 Base64
+          const decoded = decodeURIComponent(atob(initParam))
+          const { message, attachments } = JSON.parse(decoded)
+          
+          // 一次性设置所有状态
+          setSessionData({
+            id: p.id,
+            initialMessage: message,
+            initialAttachments: attachments,
+            hasInitialMessage: true
+          })
+        } catch (e) {
+          console.error('Failed to parse init param:', e)
+          setSessionData({
+            id: p.id,
+            hasInitialMessage: false
+          })
+        }
+      } else {
+        // 没有初始消息
+        setSessionData({
+          id: p.id,
+          hasInitialMessage: false
+        })
+      }
+    })
+  }, [params, searchParams])
 
-    return (
-        <div className="relative flex flex-col h-full flex-1 min-w-0 px-4">
-            {/* 顶部标题 & 操作按钮 */}
-            <SessionHeader/>
-            {/* 中间内容 */}
-            <div className="mx-auto w-full max-w-full sm:max-w-[768px] sm:min-w-[390px] flex flex-col flex-1">
-                <div className="flex flex-col w-full gap-3 pb-10 pt-3 flex-1">
-                    {
-                        messgaes.map(message => (
-                            <ChatMessage key={message.id} message={message} />
-                        ))
-                    }
-                </div>
-                {/* 底部输入框 & 任务清单 */}
-                <div className="sticky bottom-0 mt-auto">
-                    {/* 规划列表 */}
-                    <PlanPanel className="mb-2"/>
-                    {/* 输入框 */}
-                    <ChatInput className="mb-4"/>
-                </div>
-            </div>
-        </div>
-    )
+  if (!sessionData) {
+    return <div className="flex items-center justify-center h-full">加载中...</div>
+  }
+
+  return (
+    <SessionDetailView
+      sessionId={sessionData.id}
+      initialMessage={sessionData.initialMessage}
+      initialAttachments={sessionData.initialAttachments}
+      hasInitialMessage={sessionData.hasInitialMessage}
+    />
+  )
 }
