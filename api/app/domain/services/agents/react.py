@@ -1,7 +1,7 @@
 
 import logging
-from typing import AsyncGenerator
-from app.domain.models.event import BaseEvent, ErrorEvent, Event, MessageEvent, StepEvent, StepEventStatus, TitleEvent, ToolEvent, ToolEventStatus, WaitEvent
+from typing import AsyncGenerator, List, Optional
+from app.domain.models.event import BaseEvent, ErrorEvent, Event, MessageEvent, StepEvent, StepEventStatus, ThinkingEvent, TitleEvent, ToolEvent, ToolEventStatus, WaitEvent
 from app.domain.models.file import File
 from app.domain.models.message import Message
 from app.domain.models.plan import ExecutionStatus, Plan, Step
@@ -87,26 +87,49 @@ class ReActAgent(BaseAgent):
         # 1.构建请求 query
         query = SUMMARIZE_PROMPT
 
-        # 2.调用 invoke 方法获取 Agent 生成的事件
-        async for event in self.invoke(query):
-            # 3.判断事件类型是否为消息事件，如果是则表示 Agent 结构化生成汇总内容
-            if isinstance(event, MessageEvent):
-                # 4.记录日志并解析输出内容
-                logger.info(f"执行Agent生成汇总内容: {event.message}")
-                parsed_obj = await self._json_parser.invoke(event.message)
-
-                # 5.将解析数据转换为Message对象
-                message = Message.model_validate(parsed_obj)
-
-                # 6.提取消息中的附件信息
-                attachments = [File(filepath=filepath) for filepath in message.attachments]
-
-                # 7.返回消息事件并将消息+附件进行相应
-                yield MessageEvent(
-                    role="assistant",
-                    message=message.message,
-                    attachments=attachments,
-                )
+        # 2.直接调用流式LLM，传入空工具列表以强制启用 json_object response_format
+        #   （若传工具列表，部分模型会禁用 response_format，导致 JSON 输出不稳定）
+        await self._ensure_memory()
+        message: Optional[dict] = None
+        async for item in self._stream_invoke_llm(
+            [{"role": "user", "content": query}],
+            format=self._format,
+            tools_override=[],
+        ):
+            if isinstance(item, ThinkingEvent):
+                yield item
             else:
-                # 8.其他事件则直接返回
-                yield event
+                message = item
+
+        if message is None:
+            yield ErrorEvent(error="LLM 汇总失败，未获取到有效响应")
+            return
+
+        # 3.记录日志并解析输出内容
+        logger.info(f"执行Agent生成汇总内容: {message.get('content', '')}")
+        parsed_obj = await self._json_parser.invoke(message.get("content", ""))
+
+        # 4.将解析数据转换为Message对象
+        summarize_message = Message.model_validate(parsed_obj)
+
+        # 5.提取消息中的附件信息（LLM返回的文件路径列表）
+        attachments: List[File] = [File(filepath=fp) for fp in summarize_message.attachments]
+
+        # 6.如果 LLM 未提供附件，从 session 文件列表中获取作为兜底
+        if not attachments:
+            logger.info("LLM 汇总未提供附件，尝试从会话文件列表获取")
+            try:
+                async with self._uow:
+                    session = await self._uow.session.get_by_id(self._session_id)
+                if session and session.files:
+                    attachments = list(session.files)
+                    logger.info(f"从会话文件列表获取到 {len(attachments)} 个附件")
+            except Exception as e:
+                logger.warning(f"从会话文件列表获取附件失败: {str(e)}")
+
+        # 7.返回消息事件并将消息+附件进行相应
+        yield MessageEvent(
+            role="assistant",
+            message=summarize_message.message,
+            attachments=attachments,
+        )

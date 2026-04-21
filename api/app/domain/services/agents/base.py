@@ -114,14 +114,18 @@ class BaseAgent(ABC):
         self,
         messages: List[Dict[str, Any]],
         format: Optional[str] = None,
+        tools_override: Optional[List[Dict[str, Any]]] = None,
     ) -> AsyncGenerator[Union[ThinkingEvent, Dict[str, Any]], None]:
         """流式调用语言模型：实时 yield ThinkingEvent 思考块，最终 yield 完整 message dict
 
         调用方应将 dict 类型的 yield 值视为最终 message，将 ThinkingEvent 类型的 yield 值
         向上层传播以推送给前端。
+
+        tools_override: 若传入，则使用该列表代替 self._get_available_tools()。
+                        传入空列表 [] 可强制禁用工具，使 response_format 生效（如 summarize 场景）。
         """
         await self._add_to_memory(messages)
-        available_tools = self._get_available_tools()
+        available_tools = self._get_available_tools() if tools_override is None else tools_override
         # 当同时存在 tools 和 response_format 时，部分模型（DeepSeek）会陷入只调工具的死循环
         # 仅在无 tools 时才传 response_format，有 tools 时让 LLM 自行决定回复方式
         response_format = {"type": format} if (format and not available_tools) else None
