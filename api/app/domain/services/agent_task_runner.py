@@ -345,15 +345,24 @@ class AgentTaskRunner(TaskRunner):
         return f"https://{settings.oss_bucket}.{settings.oss_endpoint}/{file.key}"
 
     async def _sync_message_attachments_to_storage(self, event: MessageEvent) -> None:
-        """将消息中的附件同步到存储中"""
-        attachments: List[File] = []
+        """将消息中的附件同步到存储中
+
+        - 已同步的文件（key 字段非空）直接保留，不重复上传。
+        - 仅对 key 为空的文件（新文件路径）执行下载+上传流程。
+        """
+        if not event.attachments:
+            return
+        attachments = []
         try:
-            if event.attachments:
-                for attachment in event.attachments:
+            for attachment in event.attachments:
+                if attachment.key:
+                    # 已经同步过（通过 file 工具调用时由 _sync_file_to_storage 上传）
+                    attachments.append(attachment)
+                else:
+                    # 未同步的新文件，执行完整同步
                     file = await self._sync_file_to_storage(attachment.filepath)
                     if file:
                         attachments.append(file)
-            
             event.attachments = attachments
         except Exception as e:
             logger.exception(f"AgentTaskRunner 同步消息附件到存储失败: {str(e)}")

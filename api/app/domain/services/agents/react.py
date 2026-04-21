@@ -1,7 +1,7 @@
 
 import logging
 from typing import AsyncGenerator, List, Optional
-from app.domain.models.event import BaseEvent, ErrorEvent, Event, MessageEvent, StepEvent, StepEventStatus, ThinkingEvent, TitleEvent, ToolEvent, ToolEventStatus, WaitEvent
+from app.domain.models.event import BaseEvent, ErrorEvent, MessageEvent, StepEvent, StepEventStatus, ThinkingEvent, ToolEvent, ToolEventStatus, WaitEvent
 from app.domain.models.file import File
 from app.domain.models.message import Message
 from app.domain.models.plan import ExecutionStatus, Plan, Step
@@ -83,18 +83,16 @@ class ReActAgent(BaseAgent):
         step.status = ExecutionStatus.COMPLETED
 
     async def summarize(self) -> AsyncGenerator[BaseAgent, None]:
-        """调用Agent汇总历史的消息并生成最终回复+附件"""
-        # 1.构建请求 query
+        """调用Agent汇总历史消息，生成最终回复，并从会话文件列表自动附加附件"""
+        # 1.构建请求 query（只要求纯文本总结，附件由系统自动从 session.files 获取）
         query = SUMMARIZE_PROMPT
 
         # 2.直接调用流式LLM，传入空工具列表以强制启用 json_object response_format
-        #   （若传工具列表，部分模型会禁用 response_format，导致 JSON 输出不稳定）
         await self._ensure_memory()
         message: Optional[dict] = None
         async for item in self._stream_invoke_llm(
             [{"role": "user", "content": query}],
-            format=self._format,
-            tools_override=[],
+            tools_override=[],  # 无工具，LLM 只输出纯文本
         ):
             if isinstance(item, ThinkingEvent):
                 yield item
@@ -105,31 +103,25 @@ class ReActAgent(BaseAgent):
             yield ErrorEvent(error="LLM 汇总失败，未获取到有效响应")
             return
 
-        # 3.记录日志并解析输出内容
-        logger.info(f"执行Agent生成汇总内容: {message.get('content', '')}")
-        parsed_obj = await self._json_parser.invoke(message.get("content", ""))
+        summary_text = (message.get("content") or "").strip()
+        logger.info(f"执行Agent生成汇总内容（前100字符）: {summary_text[:100]}")
 
-        # 4.将解析数据转换为Message对象
-        summarize_message = Message.model_validate(parsed_obj)
+        # 3.从 session.files 获取本次任务产生的所有附件
+        #   这些文件在 file 工具调用时已通过 _sync_file_to_storage 同步到对象存储，
+        #   无需再次上传，直接作为附件使用即可。
+        attachments: List[File] = []
+        try:
+            async with self._uow:
+                session = await self._uow.session.get_by_id(self._session_id)
+            if session and session.files:
+                attachments = list(session.files)
+                logger.info(f"自动附加会话文件 {len(attachments)} 个")
+        except Exception as e:
+            logger.warning(f"获取会话文件列表失败: {str(e)}")
 
-        # 5.提取消息中的附件信息（LLM返回的文件路径列表）
-        attachments: List[File] = [File(filepath=fp) for fp in summarize_message.attachments]
-
-        # 6.如果 LLM 未提供附件，从 session 文件列表中获取作为兜底
-        if not attachments:
-            logger.info("LLM 汇总未提供附件，尝试从会话文件列表获取")
-            try:
-                async with self._uow:
-                    session = await self._uow.session.get_by_id(self._session_id)
-                if session and session.files:
-                    attachments = list(session.files)
-                    logger.info(f"从会话文件列表获取到 {len(attachments)} 个附件")
-            except Exception as e:
-                logger.warning(f"从会话文件列表获取附件失败: {str(e)}")
-
-        # 7.返回消息事件并将消息+附件进行相应
+        # 4.返回最终消息事件
         yield MessageEvent(
             role="assistant",
-            message=summarize_message.message,
+            message=summary_text,
             attachments=attachments,
         )
