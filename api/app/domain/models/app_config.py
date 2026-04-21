@@ -13,9 +13,9 @@ class LLMConfig(BaseModel):
 
 class AgentConfig(BaseModel):
     """Agent 通用配置"""
-    max_iterations: int = Field(default=100, gt=0, lt=100) # 最大迭代次数
-    max_retries: int = Field(default=3, gt=1, lt=10) # LLM/工具的最大重试次数
-    max_search_results: int = Field(default=10, gt=1, lt=30) # 最大搜索结果数
+    max_iterations: int = Field(default=30, gt=0, le=200) # 单步骤最大工具调用次数
+    max_retries: int = Field(default=3, gt=0, le=10) # LLM/工具的最大重试次数
+    max_search_results: int = Field(default=10, gt=0, le=30) # 最大搜索结果数
 
 class MCPTransport(str, Enum):
     """MCP 传输类型枚举"""

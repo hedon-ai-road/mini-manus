@@ -121,7 +121,10 @@ class BaseAgent(ABC):
         向上层传播以推送给前端。
         """
         await self._add_to_memory(messages)
-        response_format = {"type": format} if format else None
+        available_tools = self._get_available_tools()
+        # 当同时存在 tools 和 response_format 时，部分模型（DeepSeek）会陷入只调工具的死循环
+        # 仅在无 tools 时才传 response_format，有 tools 时让 LLM 自行决定回复方式
+        response_format = {"type": format} if (format and not available_tools) else None
 
         for _ in range(self._agent_config.max_retries):
             try:
@@ -130,7 +133,7 @@ class BaseAgent(ABC):
 
                 async for chunk in self._llm.invoke_stream(
                     messages=self._memory.get_messages(),
-                    tools=self._get_available_tools(),
+                    tools=available_tools,
                     response_format=response_format,
                     tool_choice=self._tool_choice,
                 ):
