@@ -48,7 +48,7 @@ class FileTool(BaseTool):
             max_length: int = 10000,
     ) -> ToolResult:
         """传递文件路径读取沙箱中的文件内容"""
-        return await self.sandbox.file_read(
+        return await self.sandbox.read_file(
             filepath=filepath,
             start_line=start_line,
             end_line=end_line,
