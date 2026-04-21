@@ -21,10 +21,10 @@ MCP客户端管理器的开发思路:
 """
 
 import asyncio
-from contextlib import AsyncExitStack
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from contextlib import AsyncExitStack
+from typing import Any, AsyncContextManager, AsyncGenerator, Dict, List, Optional
 import httpx
 from mcp import ClientSession, StdioServerParameters, Tool, stdio_client
 from mcp.client.sse import sse_client
@@ -185,7 +185,7 @@ class MCPClientManager:
             logger.error(f"连接 streamable-htt-mcp 服务器失败: {str(e)}")
             raise
 
-    async def _new_session(self, server_name: str, cm: AbstractAsyncContextManager) -> ClientSession:
+    async def _new_session(self, server_name: str, cm: AsyncContextManager) -> ClientSession:
         # 使用异步上下文管理器创建传输协议
         read_stream, write_stream = None, None
 
