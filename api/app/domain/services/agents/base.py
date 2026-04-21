@@ -274,7 +274,19 @@ class BaseAgent(ABC):
                 tool_call_id = tool_call["id"] or str(uuid.uuid4())
                 function_name = tool_call["function"]["name"]
                 function_args = await self._json_parser.invoke(tool_call["function"]["arguments"])
-                tool = self._get_tool(function_name)
+
+                try:
+                    tool = self._get_tool(function_name)
+                except ValueError as e:
+                    logger.warning(f"Agent 调用了未知工具 [{function_name}]，将错误反馈给 LLM")
+                    error_result = ToolResult(success=False, message=str(e))
+                    tool_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "function_name": function_name,
+                        "content": error_result.model_dump_json(),
+                    })
+                    continue
 
                 # 返回工具即将调用事件
                 yield ToolEvent(
