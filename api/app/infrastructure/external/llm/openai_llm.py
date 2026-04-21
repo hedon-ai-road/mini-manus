@@ -1,5 +1,5 @@
 import logging
-from typing import Any, List, Dict
+from typing import Any, AsyncGenerator, List, Dict
 
 from app.domain.external.llm import LLM
 from app.domain.models.app_config import LLMConfig
@@ -85,6 +85,95 @@ class OpenAILLM(LLM):
         except Exception as e:
             logger.error(f"调用 OpenAI 客户端发生异常: {str(e)}")
             raise ServerError("调用 OpenAI 客户端向 LLM 发起请求出错")
+
+    async def invoke_stream(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]] = None,
+        response_format: Dict[str, Any] = None,
+        tool_choice: str = None,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """流式调用 LLM 接口，实时 yield 思考内容块，最终 yield 完整 message
+
+        每次 yield 的 dict 格式为：
+          - {"type": "thinking", "content": str}  —— 思考内容块（reasoning_content）
+          - {"type": "result",   "message": Dict} —— 完整消息（role/content/tool_calls）
+
+        Args:
+            messages: 消息列表
+            tools: 工具列表. Defaults to None.
+            response_format: 响应格式. Defaults to None.
+            tool_choice: 工具选择策略. Defaults to None.
+        """
+        try:
+            params = dict(
+                model=self._model_name,
+                temperature=self._temperature,
+                max_tokens=self._max_tokens,
+                messages=messages,
+                response_format=response_format,
+                timeout=self._timeout_sec,
+                stream=True,
+            )
+            if tools:
+                logger.info(f"流式调用 OpenAI 客户端并携带工具信息：{self._model_name}")
+                params["tools"] = tools
+                params["tool_choice"] = tool_choice
+                params["parallel_tool_calls"] = False
+            else:
+                logger.info(f"流式调用 OpenAI 客户端并未携带工具信息：{self._model_name}")
+
+            content = ""
+            tool_calls_map: Dict[int, Dict[str, Any]] = {}
+
+            stream = await self._client.chat.completions.create(**params)
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+
+                # 实时 yield reasoning_content（思考内容）
+                reasoning = getattr(delta, "reasoning_content", None)
+                if reasoning:
+                    yield {"type": "thinking", "content": reasoning}
+
+                # 累积 content
+                if delta.content:
+                    content += delta.content
+
+                # 累积 tool_calls
+                if delta.tool_calls:
+                    for tc_delta in delta.tool_calls:
+                        idx = tc_delta.index
+                        if idx not in tool_calls_map:
+                            tool_calls_map[idx] = {
+                                "id": tc_delta.id or "",
+                                "type": "function",
+                                "function": {
+                                    "name": (tc_delta.function.name or "") if tc_delta.function else "",
+                                    "arguments": (tc_delta.function.arguments or "") if tc_delta.function else "",
+                                },
+                            }
+                        else:
+                            if tc_delta.id:
+                                tool_calls_map[idx]["id"] = tc_delta.id
+                            if tc_delta.function:
+                                if tc_delta.function.name:
+                                    tool_calls_map[idx]["function"]["name"] += tc_delta.function.name
+                                if tc_delta.function.arguments:
+                                    tool_calls_map[idx]["function"]["arguments"] += tc_delta.function.arguments
+
+            tool_calls = [tool_calls_map[k] for k in sorted(tool_calls_map.keys())] if tool_calls_map else None
+            assembled: Dict[str, Any] = {
+                "role": "assistant",
+                "content": content or None,
+                "tool_calls": tool_calls,
+            }
+            logger.info(f"流式调用 OpenAI 客户端完成，assembled message: {assembled}")
+            yield {"type": "result", "message": assembled}
+        except Exception as e:
+            logger.error(f"流式调用 OpenAI 客户端发生异常: {str(e)}")
+            raise ServerError("流式调用 OpenAI 客户端向 LLM 发起请求出错")
 
 
 if __name__ == "__main__":

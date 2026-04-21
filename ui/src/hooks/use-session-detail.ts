@@ -47,6 +47,42 @@ export function useSessionDetail(
     const eventId = (evToAppend.data as { event_id?: string })?.event_id
     if (eventId) lastEventIdRef.current = eventId
 
+    // 思考事件需要特殊处理：将流式 chunk 合并到最后一条 thinking 事件中，避免事件列表膨胀
+    if (evToAppend.type === 'thinking') {
+      const thinkingData = evToAppend.data as { content: string; status: 'thinking' | 'done' }
+      if (thinkingData.status === 'done') {
+        // 将最后一条 thinking 事件标记为 done
+        setEvents((prev) => {
+          for (let i = prev.length - 1; i >= 0; i--) {
+            if (prev[i].type === 'thinking') {
+              const updated = { ...prev[i], data: { ...(prev[i].data as object), status: 'done' } } as SSEEventData
+              const next = [...prev]
+              next[i] = updated
+              return next
+            }
+          }
+          return prev
+        })
+      } else if (thinkingData.content) {
+        // 将 chunk 追加到最后一条 thinking 事件中，若不存在则新建
+        setEvents((prev) => {
+          const last = prev[prev.length - 1]
+          if (last?.type === 'thinking' && (last.data as { status?: string }).status === 'thinking') {
+            const updated = {
+              ...last,
+              data: {
+                ...(last.data as object),
+                content: (last.data as { content: string }).content + thinkingData.content,
+              },
+            } as SSEEventData
+            return [...prev.slice(0, -1), updated]
+          }
+          return [...prev, evToAppend]
+        })
+      }
+      return
+    }
+
     setEvents((prev) => [...prev, evToAppend])
     
     // 更新会话标题

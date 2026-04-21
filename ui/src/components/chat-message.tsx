@@ -7,6 +7,7 @@ import { ManusIcon } from '@/components/manus-icon'
 import { ToolUse } from '@/components/tool-use'
 import { AttachmentsMessage } from '@/components/attachments-message'
 import { MarkdownContent } from '@/components/markdown-content'
+import { ThinkingBlock } from '@/components/thinking-block'
 import type { ToolEvent } from '@/lib/api/types'
 import { type TimelineItem, type AttachmentFile, getToolTimeLabel } from '@/lib/session-events'
 
@@ -119,6 +120,16 @@ export function ChatMessage({
           onFileClick={onFileClick}
         />
       </div>
+    )
+  }
+
+  if (item.kind === 'thinking') {
+    return (
+      <ThinkingBlock
+        className={className}
+        content={item.content}
+        status={item.status}
+      />
     )
   }
 

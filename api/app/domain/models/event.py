@@ -116,6 +116,12 @@ class DoneEvent(BaseEvent):
     """结束事件"""
     type: Literal["done"] = "done"
 
+class ThinkingEvent(BaseEvent):
+    """思考事件：LLM 的实时推理内容（reasoning_content）"""
+    type: Literal["thinking"] = "thinking"
+    content: str = "" # 思考内容块
+    status: Literal["thinking", "done"] = "thinking" # thinking=流式块, done=思考完毕
+
 # 定义应用事件类型声明
 Event = Annotated[Union[
     PlanEvent,
@@ -126,4 +132,5 @@ Event = Annotated[Union[
     WaitEvent,
     ErrorEvent,
     DoneEvent,
+    ThinkingEvent,
 ], Field(discriminator="type")]

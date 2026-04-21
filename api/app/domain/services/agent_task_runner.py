@@ -178,6 +178,13 @@ class AgentTaskRunner(TaskRunner):
         """往指定任务的消息队列写入事件数据并更新会话状态"""
         event_id = await task.output_stream.put(event.model_dump_json())
         event.id = event_id
+
+        # 思考流式块（status="thinking"）仅推送到 Redis stream 供 SSE 实时传递，不持久化到 DB
+        # 只有 status="done" 的思考摘要事件才持久化
+        from app.domain.models.event import ThinkingEvent as _ThinkingEvent
+        if isinstance(event, _ThinkingEvent) and event.status == "thinking":
+            return
+
         async with self._uow:
             await self._uow.session.add_event(self._session_id, event)
 

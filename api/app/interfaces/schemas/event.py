@@ -213,6 +213,16 @@ class ErrorSSEEvent(BaseSSEEvent):
     event: Literal["error"] = "error"
     data: ErrorEventData
 
+class ThinkingEventData(BaseEventData):
+    """思考事件数据"""
+    content: str = "" # 思考内容块
+    status: str = "thinking" # thinking=流式块, done=思考完毕
+
+class ThinkingSSEEvent(BaseSSEEvent):
+    """思考SSE事件"""
+    event: Literal["thinking"] = "thinking"
+    data: ThinkingEventData
+
 AgentSSEEvent=Union[
     CommonSSEEvent,
     MessageSSEEvent,
@@ -223,6 +233,7 @@ AgentSSEEvent=Union[
     DoneSSEEvent,
     ErrorSSEEvent,
     WaitSSEEvent,
+    ThinkingSSEEvent,
 ]
 
 @dataclass

@@ -15,6 +15,7 @@ import type {
   StepEvent,
   ToolEvent,
   SessionFile,
+  ThinkingEvent,
 } from "@/lib/api/types";
 
 /** 后端返回的原始事件（可能用 event 或 type 表示类型） */
@@ -48,6 +49,7 @@ export type TimelineItem =
   | { kind: "user"; id: string; data: ChatMessage }
   | { kind: "attachments"; id: string; role: "user" | "assistant"; files: AttachmentFile[] }
   | { kind: "assistant"; id: string; data: ChatMessage }
+  | { kind: "thinking"; id: string; content: string; status: "thinking" | "done" }
   | { kind: "tool"; id: string; data: ToolEvent; timeLabel?: string }
   | { kind: "step"; id: string; data: StepEvent; tools: ToolEvent[] }
   | { kind: "error"; id: string; error: string; timestamp?: number };
@@ -128,9 +130,38 @@ export function eventsToTimeline(events: SSEEventData[]): TimelineItem[] {
   let toolIndex = 0;
   let stepIndex = 0;
   let errorIndex = 0;
+  let thinkingIndex = 0;
 
   for (const ev of events) {
     switch (ev.type) {
+      case "thinking": {
+        const thinking = ev.data as ThinkingEvent;
+        // Find the last thinking item and update it, or create a new one
+        let found = false;
+        for (let i = list.length - 1; i >= 0; i--) {
+          if (list[i].kind === "thinking") {
+            const existing = list[i] as Extract<TimelineItem, { kind: "thinking" }>;
+            list[i] = {
+              ...existing,
+              content: existing.content + thinking.content,
+              status: thinking.status,
+            };
+            found = true;
+            break;
+          }
+          // Stop looking once we hit a non-thinking, non-step item (new content block started)
+          if (list[i].kind === "assistant" || list[i].kind === "user") break;
+        }
+        if (!found && thinking.content) {
+          list.push({
+            kind: "thinking",
+            id: stableId("thinking", thinkingIndex++, String(list.length)),
+            content: thinking.content,
+            status: thinking.status,
+          });
+        }
+        break;
+      }
       case "message": {
         const msg = ev.data as ChatMessage;
         if (msg.role === "user") {

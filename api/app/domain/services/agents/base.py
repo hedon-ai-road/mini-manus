@@ -1,12 +1,12 @@
 from abc import ABC
 import logging
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
+from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Union
 import asyncio
 import uuid
 
 from app.domain.external.json_parser import JsonParser
 from app.domain.external.llm import LLM
-from app.domain.models.event import ErrorEvent, Event, MessageEvent, ToolEvent, ToolEventStatus
+from app.domain.models.event import ErrorEvent, Event, MessageEvent, ThinkingEvent, ToolEvent, ToolEventStatus
 from app.domain.models.memory import Memory
 from app.domain.models.message import Message
 from app.domain.models.tool_result import ToolResult
@@ -110,6 +110,67 @@ class BaseAgent(ABC):
                 await asyncio.sleep(self._retry_interval)
                 continue
 
+    async def _stream_invoke_llm(
+        self,
+        messages: List[Dict[str, Any]],
+        format: Optional[str] = None,
+    ) -> AsyncGenerator[Union[ThinkingEvent, Dict[str, Any]], None]:
+        """流式调用语言模型：实时 yield ThinkingEvent 思考块，最终 yield 完整 message dict
+
+        调用方应将 dict 类型的 yield 值视为最终 message，将 ThinkingEvent 类型的 yield 值
+        向上层传播以推送给前端。
+        """
+        await self._add_to_memory(messages)
+        response_format = {"type": format} if format else None
+
+        for _ in range(self._agent_config.max_retries):
+            try:
+                message: Optional[Dict[str, Any]] = None
+                has_thinking = False
+
+                async for chunk in self._llm.invoke_stream(
+                    messages=self._memory.get_messages(),
+                    tools=self._get_available_tools(),
+                    response_format=response_format,
+                    tool_choice=self._tool_choice,
+                ):
+                    if chunk["type"] == "thinking":
+                        has_thinking = True
+                        yield ThinkingEvent(content=chunk["content"], status="thinking")
+                    elif chunk["type"] == "result":
+                        message = chunk["message"]
+
+                if message is None:
+                    logger.warning("LLM 流式调用未返回 result，执行重试")
+                    await asyncio.sleep(self._retry_interval)
+                    continue
+
+                if not message.get("content") and not message.get("tool_calls"):
+                    logger.warning("LLM 流式回复了空内容，执行重试")
+                    await self._add_to_memory([
+                        {"role": "assistant", "content": ""},
+                        {"role": "user", "content": "AI 无响应内容，请继续。"}
+                    ])
+                    await asyncio.sleep(self._retry_interval)
+                    has_thinking = False
+                    continue
+
+                # 思考完毕，发出 done 标记
+                if has_thinking:
+                    yield ThinkingEvent(content="", status="done")
+
+                filtered_message: Dict[str, Any] = {"role": "assistant", "content": message.get("content")}
+                if message.get("tool_calls"):
+                    filtered_message["tool_calls"] = message.get("tool_calls")[:1]
+
+                await self._add_to_memory([filtered_message])
+                yield filtered_message
+                return
+            except Exception as e:
+                logger.error(f"流式调用语言模型发生错误: {str(e)}")
+                await asyncio.sleep(self._retry_interval)
+                continue
+
     async def _invoke_tool(self, tool: BaseTool, tool_name: str, arguments: Dict[str, Any]) -> ToolResult:
         """调用工具"""
         err = ""
@@ -183,11 +244,21 @@ class BaseAgent(ABC):
     async def invoke(self, query: str, format: Optional[str] = None) -> AsyncGenerator[Event, None]:
         """传递消息+响应格式调用程序生成异步迭代内容"""
         format = format if format else self._format
-        
-        message = await self._invoke_llm(
+
+        # 首次 LLM 调用（流式，实时推送思考内容）
+        message: Optional[Dict[str, Any]] = None
+        async for item in self._stream_invoke_llm(
             [{"role": "user", "content": query}],
             format,
-        )
+        ):
+            if isinstance(item, ThinkingEvent):
+                yield item
+            else:
+                message = item
+
+        if message is None:
+            yield ErrorEvent(error="LLM 调用失败，未获取到有效响应")
+            return
 
         for _ in range(self._agent_config.max_iterations):
             if not message.get("tool_calls"):
@@ -229,10 +300,21 @@ class BaseAgent(ABC):
                     "function_name": function_name,
                     "content": result.model_dump_json(),
                 })
-            
-            message = await self._invoke_llm(tool_messages)
+
+            # 工具调用后再次流式调用 LLM
+            message = None
+            async for item in self._stream_invoke_llm(tool_messages):
+                if isinstance(item, ThinkingEvent):
+                    yield item
+                else:
+                    message = item
+
+            if message is None:
+                yield ErrorEvent(error="LLM 工具调用后响应失败")
+                return
         else:
             yield ErrorEvent(error=f"Agent 迭代操作最大次数: {self._agent_config.max_iterations}，任务处理失败")
+            return
 
         # 返回处理成功的消息
         yield MessageEvent(message=message["content"])

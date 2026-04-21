@@ -245,6 +245,15 @@ export type ToolEvent = {
 };
 
 /**
+ * 思考事件（LLM reasoning_content 实时流）
+ */
+export type ThinkingEvent = {
+  content: string;
+  status: "thinking" | "done";
+  [key: string]: unknown;
+};
+
+/**
  * SSE 事件类型
  */
 export type SSEEventType =
@@ -255,7 +264,8 @@ export type SSEEventType =
   | "tool"
   | "wait"
   | "done"
-  | "error";
+  | "error"
+  | "thinking";
 
 /**
  * SSE 事件数据
@@ -268,7 +278,8 @@ export type SSEEventData =
   | { type: "tool"; data: ToolEvent }
   | { type: "wait"; data: Record<string, unknown> }
   | { type: "done"; data: Record<string, unknown> }
-  | { type: "error"; data: { error: string } };
+  | { type: "error"; data: { error: string } }
+  | { type: "thinking"; data: ThinkingEvent };
 
 /**
  * SSE 事件处理器

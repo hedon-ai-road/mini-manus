@@ -284,7 +284,7 @@ export function SessionDetailView({ sessionId, initialMessage, initialAttachment
                   />
                 ))}
 
-                {(session?.status === 'running' || (hasInitialMessage && !initialMessageSentRef.current)) && (
+                {(session?.status === 'running' || (hasInitialMessage && !initialMessageSentRef.current)) && timeline[timeline.length - 1]?.kind !== 'thinking' && (
                   <div className="flex items-center gap-2 text-sm text-gray-500 py-3">
                     <Loader2 className="size-4 animate-spin" />
                     <span>正在思考中...</span>
