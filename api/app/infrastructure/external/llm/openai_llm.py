@@ -1,5 +1,8 @@
 import logging
-from typing import Any, AsyncGenerator, List, Dict
+import json
+import re
+import uuid
+from typing import Any, AsyncGenerator, List, Dict, Optional, Tuple
 
 from app.domain.external.llm import LLM
 from app.domain.models.app_config import LLMConfig
@@ -8,6 +11,60 @@ from app.application.errors.exceptions import ServerError
 from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
+
+# ──────────────────────────────────────────────────────────────
+#  DSML 格式工具调用解析
+#  DeepSeek 在 API 过载/降级时有时会把工具调用输出为 DSML 文本而非
+#  结构化 tool_calls，格式示例：
+#    <|DSML|function_calls>
+#      <|DSML|invoke name="func_name">
+#        <|DSML|parameter name="param" string="true">value</|DSML|parameter>
+#      </|DSML|invoke>
+#    </|DSML|function_calls>
+# ──────────────────────────────────────────────────────────────
+_DSML_FC_RE = re.compile(
+    r'<\|DSML\|function_calls>(.*?)</\|DSML\|function_calls>',
+    re.DOTALL | re.IGNORECASE,
+)
+_DSML_INVOKE_RE = re.compile(
+    r'<\|DSML\|invoke\s+name="([^"]+)">(.*?)</\|DSML\|invoke>',
+    re.DOTALL | re.IGNORECASE,
+)
+_DSML_PARAM_RE = re.compile(
+    r'<\|DSML\|parameter\s+name="([^"]+)"[^>]*>(.*?)</\|DSML\|parameter>',
+    re.DOTALL | re.IGNORECASE,
+)
+
+def _parse_dsml_tool_calls(content: str) -> Tuple[str, Optional[List[Dict]]]:
+    """检测并解析 content 中的 DSML 格式工具调用。
+
+    Returns:
+        (cleaned_content, tool_calls)
+        - cleaned_content: 去掉 DSML 块后的正文（可能为空）
+        - tool_calls: 解析出的 OpenAI 风格 tool_calls 列表；未检测到时为 None
+    """
+    fc_match = _DSML_FC_RE.search(content)
+    if not fc_match:
+        return content, None
+
+    tool_calls = []
+    for invoke_match in _DSML_INVOKE_RE.finditer(fc_match.group(1)):
+        func_name = invoke_match.group(1).strip()
+        params: Dict[str, str] = {}
+        for param_match in _DSML_PARAM_RE.finditer(invoke_match.group(2)):
+            params[param_match.group(1).strip()] = param_match.group(2).strip()
+        tool_calls.append({
+            "id": str(uuid.uuid4()),
+            "type": "function",
+            "function": {
+                "name": func_name,
+                "arguments": json.dumps(params, ensure_ascii=False),
+            },
+        })
+
+    cleaned = _DSML_FC_RE.sub("", content).strip()
+    logger.info(f"检测到 DSML 格式工具调用，已解析 {len(tool_calls)} 个: {[tc['function']['name'] for tc in tool_calls]}")
+    return cleaned, tool_calls if tool_calls else None
 
 class OpenAILLM(LLM):
     """基于 OpenAI SDK/兼容 OpenAI 格式的 LLM 调用类"""
@@ -84,7 +141,7 @@ class OpenAILLM(LLM):
             return response.choices[0].message.model_dump()
         except Exception as e:
             logger.error(f"调用 OpenAI 客户端发生异常: {str(e)}")
-            raise ServerError("调用 OpenAI 客户端向 LLM 发起请求出错")
+            raise ServerError(f"LLM 调用失败: {type(e).__name__}: {str(e)}") from e
 
     async def invoke_stream(
         self,
@@ -164,6 +221,13 @@ class OpenAILLM(LLM):
                                     tool_calls_map[idx]["function"]["arguments"] += tc_delta.function.arguments
 
             tool_calls = [tool_calls_map[k] for k in sorted(tool_calls_map.keys())] if tool_calls_map else None
+
+            # 若 LLM 降级输出了 DSML 格式工具调用，解析并转换为标准 tool_calls
+            if not tool_calls and content:
+                content, dsml_tool_calls = _parse_dsml_tool_calls(content)
+                if dsml_tool_calls:
+                    tool_calls = dsml_tool_calls
+
             assembled: Dict[str, Any] = {
                 "role": "assistant",
                 "content": content or None,
@@ -173,7 +237,7 @@ class OpenAILLM(LLM):
             yield {"type": "result", "message": assembled}
         except Exception as e:
             logger.error(f"流式调用 OpenAI 客户端发生异常: {str(e)}")
-            raise ServerError("流式调用 OpenAI 客户端向 LLM 发起请求出错")
+            raise ServerError(f"LLM 流式调用失败: {type(e).__name__}: {str(e)}") from e
 
 
 if __name__ == "__main__":

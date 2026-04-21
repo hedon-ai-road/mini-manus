@@ -14,7 +14,7 @@ class AppException(RuntimeError):
         self.status_code = status_code
         self.msg = msg
         self.data = data
-        super().__init__()
+        super().__init__(msg)  # 将 msg 传入 RuntimeError，使 str(e) 返回 msg
 
 class BadRequestError(AppException):
     """客户端请求错误"""
