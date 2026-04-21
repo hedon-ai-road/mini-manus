@@ -49,7 +49,14 @@ class PlaywrightBrowser(BrowserProtocol):
     
     async def _extract_content(self) -> str:
         """提取当前页面内容"""
-        visible_content = await self.page.evaluate(GET_VISIBLE_CONTENT_FUNC)
+        try:
+            visible_content = await self.page.evaluate(GET_VISIBLE_CONTENT_FUNC)
+        except Exception as e:
+            logger.warning(f"page.evaluate 提取页面内容失败，回退到 page.content(): {e}")
+            try:
+                visible_content = await self.page.content()
+            except Exception:
+                return ""
         markdown_content = markdownify(visible_content)
         max_content_length = min(len(markdown_content), 50000)
 
@@ -76,7 +83,11 @@ class PlaywrightBrowser(BrowserProtocol):
         self.page.interactive_elements_cache = []
 
         # 执行 js 脚本获取可交互的元素列表
-        interactive_elements = await self.page.evaluate(GET_INTERACTIVE_ELEMENTS_FUNC)
+        try:
+            interactive_elements = await self.page.evaluate(GET_INTERACTIVE_ELEMENTS_FUNC)
+        except Exception as e:
+            logger.warning(f"page.evaluate 提取可交互元素失败: {e}")
+            return []
 
         # 更新缓存的可交互元素列表
         self.page.interactive_elements_cache = interactive_elements
@@ -224,12 +235,15 @@ class PlaywrightBrowser(BrowserProtocol):
         await self._ensure_page()
 
         start_time = asyncio.get_event_loop().time()
-        check_interval = 5
+        check_interval = 0.5
 
         while asyncio.get_event_loop().time() - start_time < timeout:
-            is_completed = await self.page.evaluate("""() -=> document.readyState === 'completed'""")
-            if is_completed:
-                return True
+            try:
+                is_completed = await self.page.evaluate("() => document.readyState === 'complete'")
+                if is_completed:
+                    return True
+            except Exception:
+                pass
             await asyncio.sleep(check_interval)
         
         return False
