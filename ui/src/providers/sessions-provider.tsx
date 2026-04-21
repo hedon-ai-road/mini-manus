@@ -9,6 +9,8 @@ const RETRY_CONFIG = {
   maxRetries: 10,
   baseDelay: 1000,
   maxDelay: 30_000,
+  /** 无活跃任务时的静态重连间隔（服务端主动关流） */
+  idleDelay: 60_000,
 } as const
 
 /**
@@ -62,6 +64,8 @@ export function SessionsProvider({children}: { children: React.ReactNode }) {
   const initialFetchedRef = useRef(false)
   /** 标记 SSE 是否已经推送过数据，防止 REST 回调覆盖更新的 SSE 数据 */
   const sseReceivedRef = useRef(false)
+  /** 始终持有最新 sessions，供 SSE 重连回调读取（避免闭包过期） */
+  const sessionsRef = useRef<Session[]>([])
 
   // ---------- 手动刷新 ----------
   const refresh = useCallback(async () => {
@@ -120,6 +124,7 @@ export function SessionsProvider({children}: { children: React.ReactNode }) {
           if (!mounted) return
           retryCount = 0
           sseReceivedRef.current = true
+          sessionsRef.current = newSessions
           setSessions(newSessions)
           setLoading(false)
           setError(null)
@@ -132,6 +137,19 @@ export function SessionsProvider({children}: { children: React.ReactNode }) {
           if (retryCount >= RETRY_CONFIG.maxRetries) {
             console.error('[Sessions] 超过最大重试次数，停止重连')
             return
+          }
+
+          // 服务端无活跃任务时主动关闭流（SSE_STREAM_END）
+          // 此时用长间隔静态重连，避免无意义的高频轮询
+          if (err.message === 'SSE_STREAM_END') {
+            const hasActive = sessionsRef.current.some(
+              (s) => s.status === 'running' || s.status === 'waiting'
+            )
+            if (!hasActive) {
+              console.log(`[Sessions] 无活跃任务，${RETRY_CONFIG.idleDelay / 1000}s 后重连`)
+              retryTimerRef.current = setTimeout(connect, RETRY_CONFIG.idleDelay)
+              return
+            }
           }
 
           const delay = Math.min(

@@ -8,6 +8,7 @@ from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from app.application.errors.exceptions import NotFoundError
 from app.application.services.agent_service import AgentService
+from app.domain.models.session import SessionStatus
 from app.interfaces.schemas import Response
 from app.interfaces.schemas.event import EventMapper
 from app.interfaces.schemas.session import (
@@ -171,6 +172,10 @@ async def stream_sessions(
         """定义一个异步迭代器，用于获取所有会话列表"""
         while True:
             sessions = await session_service.get_all_sessions()
+            has_active = any(
+                s.status in (SessionStatus.RUNNING, SessionStatus.WAITING)
+                for s in sessions
+            )
             session_items = [
                 ListSessionItem(
                     session_id=session.id,
@@ -186,6 +191,11 @@ async def stream_sessions(
                 event="sessions",
                 data=ListSessionResponse(sessions=session_items).model_dump_json(),
             )
+
+            if not has_active:
+                # 无活跃任务，关闭流；前端收到流结束信号后可按需延迟重连
+                return
+
             await asyncio.sleep(SESSION_SLEEP_INTERVAL)
 
     return EventSourceResponse(event_generator())
