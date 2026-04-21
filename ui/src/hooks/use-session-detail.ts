@@ -51,15 +51,12 @@ export function useSessionDetail(
     if (evToAppend.type === 'thinking') {
       const thinkingData = evToAppend.data as { content: string; status: 'thinking' | 'done' }
       if (thinkingData.status === 'done') {
-        // 将最后一条 thinking 事件标记为 done
+        // 只标记最后一条 thinking 事件（不向前搜索，避免误修改上一轮的思考块）
         setEvents((prev) => {
-          for (let i = prev.length - 1; i >= 0; i--) {
-            if (prev[i].type === 'thinking') {
-              const updated = { ...prev[i], data: { ...(prev[i].data as object), status: 'done' } } as SSEEventData
-              const next = [...prev]
-              next[i] = updated
-              return next
-            }
+          const last = prev[prev.length - 1]
+          if (last?.type === 'thinking') {
+            const updated = { ...last, data: { ...(last.data as object), status: 'done' } } as SSEEventData
+            return [...prev.slice(0, -1), updated]
           }
           return prev
         })

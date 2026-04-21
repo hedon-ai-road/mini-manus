@@ -125,7 +125,21 @@ export function SessionsProvider({children}: { children: React.ReactNode }) {
           retryCount = 0
           sseReceivedRef.current = true
           sessionsRef.current = newSessions
-          setSessions(newSessions)
+          setSessions((prev) => {
+            // 首次推送（prev 为空）直接替换；后续推送只合并变化的部分，
+            // 已 completed 的 session 保持不动，不在本次推送中的不会被删除
+            if (prev.length === 0) {
+              sessionsRef.current = newSessions
+              return newSessions
+            }
+            const updateMap = new Map(newSessions.map((s) => [s.session_id, s]))
+            const merged = prev.map((s) => updateMap.has(s.session_id) ? updateMap.get(s.session_id)! : s)
+            // 追加 prev 中没有的新 session（如其他客户端创建的任务）
+            const appended = newSessions.filter((s) => !prev.find((p) => p.session_id === s.session_id))
+            const result = [...merged, ...appended]
+            sessionsRef.current = result
+            return result
+          })
           setLoading(false)
           setError(null)
         },

@@ -170,27 +170,49 @@ async def stream_sessions(
 
     async def event_generator() -> AsyncGenerator[ServerSentEvent, None]:
         """定义一个异步迭代器，用于获取所有会话列表"""
+        # 记录上一次推送时各 session 的状态，用于识别"刚变成 completed"的 session
+        prev_status: dict[str, str] = {}
+        first_push = True
+
         while True:
             sessions = await session_service.get_all_sessions()
             has_active = any(
                 s.status in (SessionStatus.RUNNING, SessionStatus.WAITING)
                 for s in sessions
             )
-            session_items = [
-                ListSessionItem(
-                    session_id=session.id,
-                    title=session.title,
-                    latest_message=session.latest_message,
-                    latest_message_at=session.latest_message_at,
-                    status=session.status,
-                    unread_message_count=session.unread_message_count,
+
+            if first_push:
+                # 首次推送：全量，让前端拿到完整快照
+                sessions_to_send = sessions
+                first_push = False
+            else:
+                # 后续推送：只推 active session + 刚刚变成 completed 的 session
+                # 这样前端既能看到状态变更，又不会重复传输无变化的历史数据
+                sessions_to_send = [
+                    s for s in sessions
+                    if s.status in (SessionStatus.RUNNING, SessionStatus.WAITING)
+                    or prev_status.get(s.id) in (SessionStatus.RUNNING, SessionStatus.WAITING)
+                ]
+
+            # 更新状态快照
+            prev_status = {s.id: s.status for s in sessions}
+
+            if sessions_to_send:
+                session_items = [
+                    ListSessionItem(
+                        session_id=session.id,
+                        title=session.title,
+                        latest_message=session.latest_message,
+                        latest_message_at=session.latest_message_at,
+                        status=session.status,
+                        unread_message_count=session.unread_message_count,
+                    )
+                    for session in sessions_to_send
+                ]
+                yield ServerSentEvent(
+                    event="sessions",
+                    data=ListSessionResponse(sessions=session_items).model_dump_json(),
                 )
-                for session in sessions
-            ]
-            yield ServerSentEvent(
-                event="sessions",
-                data=ListSessionResponse(sessions=session_items).model_dump_json(),
-            )
 
             if not has_active:
                 # 无活跃任务，关闭流；前端收到流结束信号后可按需延迟重连

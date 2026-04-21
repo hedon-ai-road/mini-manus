@@ -136,23 +136,20 @@ export function eventsToTimeline(events: SSEEventData[]): TimelineItem[] {
     switch (ev.type) {
       case "thinking": {
         const thinking = ev.data as ThinkingEvent;
-        // Find the last thinking item and update it, or create a new one
-        let found = false;
-        for (let i = list.length - 1; i >= 0; i--) {
-          if (list[i].kind === "thinking") {
-            const existing = list[i] as Extract<TimelineItem, { kind: "thinking" }>;
-            list[i] = {
-              ...existing,
-              content: existing.content + thinking.content,
-              status: thinking.status,
-            };
-            found = true;
-            break;
-          }
-          // Stop looking once we hit a non-thinking, non-step item (new content block started)
-          if (list[i].kind === "assistant" || list[i].kind === "user") break;
-        }
-        if (!found && thinking.content) {
+        const lastItem = list.length > 0 ? list[list.length - 1] : null;
+
+        if (lastItem?.kind === "thinking" && lastItem.status === "thinking") {
+          // 当前最后一项是正在流式输出的思考块，继续追加内容
+          list[list.length - 1] = {
+            ...lastItem,
+            content: lastItem.content + thinking.content,
+            status: thinking.status,
+          };
+        } else if (thinking.status === "done" && lastItem?.kind === "thinking") {
+          // done 信号：仅标记最后一项（无需追加内容）
+          list[list.length - 1] = { ...lastItem, status: "done" };
+        } else if (thinking.content) {
+          // 其他情况（上一项不是思考块，或思考块已 done）：新建一个思考块
           list.push({
             kind: "thinking",
             id: stableId("thinking", thinkingIndex++, String(list.length)),
